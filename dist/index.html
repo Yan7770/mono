@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#111213">
+  <title>MONO · 私人财富管理</title>
+  <meta name="description" content="在 MONO 查看净资产、资产配置与财富目标。">
+  <link rel="icon" href="./mono.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./panels.css">
+  <script defer src="./trend.js"></script>
+  <script defer src="./panels.js"></script>
+  <script defer src="./app.js"></script>
+</head>
+<body>
+  <header class="topbar"><div class="bar-inner">
+    <a href="#overview" class="brand" aria-label="MONO 首页"><img alt="" src="./mono.svg"><span>MONO</span></a>
+    <nav aria-label="主导航" class="mainnav">
+      <a href="#overview" data-page="overview"><i data-icon="grid"></i>财富总览</a>
+      <a href="#accounts" data-page="accounts"><i data-icon="wallet"></i>资产账户</a>
+      <a href="#goals" data-page="goals"><i data-icon="target"></i>财富目标</a>
+    </nav>
+    <div class="profile-wrap"><button class="profile" id="profileBtn" aria-expanded="false" aria-controls="profileMenu"><span class="avatar">M</span><span class="profile-label">个人空间</span><i data-icon="chevron"></i></button>
+      <div class="profile-menu" id="profileMenu" hidden><strong>个人空间</strong><p>数据保存在当前浏览器</p><button id="menuPrivacy"><i data-icon="eye"></i><span>隐藏金额</span></button></div>
+    </div>
+  </div></header>
+  <main>
+    <div id="overview">
+      <section class="page-head"><div><div class="eyebrow"><b></b> WEALTH OVERVIEW</div><h1>财富总览</h1></div>
+        <div class="head-actions"><span class="date"><i data-icon="calendar"></i><time datetime="2026-11-21">2026年11月21日</time></span><button class="primary" id="addAsset"><i data-icon="plus"></i>添加资产</button></div>
+      </section>
+      <section class="balance-card" aria-labelledby="balanceTitle">
+        <div class="engraving" aria-hidden="true"></div>
+        <div class="balance-info">
+          <div class="balance-title"><h2 id="balanceTitle">总净资产</h2><span class="currency-tag">CNY</span><button class="eye-btn" id="togglePrivacy" aria-label="隐藏金额" title="隐藏金额"><i data-icon="eye"></i></button></div>
+          <div class="net-row" id="netValue"></div>
+          <div class="balance-bottom">
+            <div><span class="summary-label">资产总额</span><span class="summary-number" id="grossValue"></span></div>
+            <div><span class="summary-label">负债总额</span><span class="summary-number" id="debtValue"></span></div>
+          </div>
+        </div>
+        <div class="plate-mark" aria-hidden="true"><span></span> MONO PRIVATE WEALTH</div>
+      </section>
+      <div class="analytics">
+        <section class="panel trend-panel">
+          <div class="panel-title"><div class="section-name"><i data-icon="pulse"></i><h2>净资产走势</h2></div><div class="range-switch" aria-label="走势时间范围">
+            <button data-range="1M">1月</button><button data-range="3M">3月</button><button data-range="6M">6月</button><button data-range="1Y">1年</button><button data-range="ALL">全部</button>
+          </div></div>
+          <div class="performance"><span id="changeValue"></span><span id="changePct"></span></div><div class="stat-caption" id="periodCaption">近一年净资产增长</div>
+          <div id="trendPlot" aria-label="净资产历史趋势图"></div>
+        </section>
+        <section class="panel allocation-panel">
+          <div class="panel-title"><div class="section-name"><i data-icon="pie"></i><h2>资产配置</h2></div><span class="panel-meta">按资产类别</span></div>
+          <div class="donut-wrap"><svg viewBox="0 0 180 180" id="allocationDonut" role="img" aria-label="资产类别占比"></svg><div class="donut-center"><small>资产类别</small><span><b id="classCount">4</b> 类</span></div></div>
+          <div id="allocationLegend" class="alloc-legend"></div>
+        </section>
+      </div>
+      <section class="panel accounts-panel">
+        <div class="panel-title"><div class="section-name"><i data-icon="wallet"></i><h2>资产账户</h2><span class="count" id="accountCount"></span></div><a class="view-all" href="#accounts">查看全部<i data-icon="right"></i></a></div>
+        <div class="table-scroll"><table class="asset-table"><thead><tr><th>账户名称</th><th>资产类别</th><th class="align-right">账户余额</th><th class="share-column">资产占比</th><th class="end-cell"></th></tr></thead><tbody id="accountRows"></tbody></table></div>
+      </section>
+    </div>
+    <div id="secondary" hidden></div>
+  </main>
+  <footer><span>MONO <b>/</b> PRIVATE WEALTH</span><span id="dataNote">示例数据 · 本地保存</span></footer>
+</body>
+</html>
