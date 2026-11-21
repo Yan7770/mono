@@ -1,4 +1,38 @@
+.overview-actions { display: flex; align-items: center; gap: 8px; }
+.overview-actions svg { width: 17px; height: 17px; }
+
+.quick-actions.mp-dialog {
+  position: fixed;
+  inset: auto 0 max(10px, env(safe-area-inset-bottom));
+  width: min(420px, calc(100% - 24px));
+  max-height: calc(100dvh - env(safe-area-inset-bottom) - 24px);
+  margin: 0 auto;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.quick-actions:focus { outline: none; }
+.quick-actions form { display: grid; gap: 8px; }
+.quick-action-list { overflow: hidden; border-radius: 20px; background: var(--surface); }
+.quick-actions button {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 54px;
+  padding: 12px 20px;
+  font-size: 1rem;
+}
+.quick-action-list button:first-child { font-weight: 600; }
+.quick-action-list button + button { border-top: 1px solid var(--line); }
+.quick-actions .quick-cancel { justify-content: center; border-radius: 18px; background: var(--surface); }
+.quick-actions button:active { background: var(--hover); }
+.quick-actions button:focus-visible { outline-offset: -3px; }
+
 @media (max-width: 700px) {
+  .overview-actions { display: none; }
   .mainnav {
     --dock-tab-size: 52px;
     --dock-gap: 8px;

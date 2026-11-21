@@ -6,6 +6,7 @@
     wallet:'<path d="M4 7.5 16.5 4a2 2 0 0 1 2.5 1.8V8"/><rect x="3" y="7.8" width="18" height="12.2" rx="2.3"/><path d="M21 12h-5a2 2 0 0 0 0 4h5"/><circle cx="16.3" cy="14" r=".55"/>',
     target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
     plus:'<path d="M12 5v14M5 12h14"/>',
+    entry:'<path d="M7 4v13m-4-4 4 4 4-4m6 7V7m-4 4 4-4 4 4"/>',
     archive:'<rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v11h14V9m-10 4h6"/>',
     restore:'<path d="M3 5v5h5M3.8 9a8.5 8.5 0 1 1 .6 7M12 7v5l3 2"/>',
     trash:'<path d="M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7"/>',
@@ -237,7 +238,7 @@
     });
     if (!mono.accounts.length) {
       const cell=tbody.insertRow().insertCell();
-      cell.colSpan=5;cell.textContent='暂无账户，点击「添加资产」开始。';
+      cell.colSpan=5;cell.textContent='添加第一个账户后，即可开始记收支。';
     }
   }
   const periodNames = {'1M':'近一个月','3M':'近三个月','6M':'近六个月','1Y':'近一年',ALL:'全部期间'};
@@ -363,7 +364,10 @@
     byId('menuPrivacy').innerHTML=tag(mono.hidden?'closed':'eye')+'<span>'+action+'</span>';
     byId('overview').hidden=page!=='overview';
     byId('secondary').hidden=page==='overview';
-    const addLabel = { overview:'添加资产', accounts:'添加账户', goals:'添加目标' }[page];
+    const hasAccounts = mono.accounts.length > 0;
+    const addLabel = page === 'goals' ? '添加目标' : hasAccounts ? '记收支或添加账户' : '添加账户';
+    byId('overviewEntry').hidden = !hasAccounts;
+    byId('addAsset').className = hasAccounts ? 'mp-secondary' : 'mp-primary';
     byId('dockAdd').setAttribute('aria-label',addLabel);
     byId('dockAdd').title=addLabel;
     document.querySelectorAll('[data-page]').forEach(link=>{
@@ -399,10 +403,25 @@
   document.addEventListener('click',e=>{if(!e.target.closest('.profile-wrap')) closeMenu()});
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!byId('profileMenu').hidden){closeMenu();byId('profileBtn').focus()}});
   byId('addAsset').onclick=()=>window.MonoPanels.editAccount();
+  byId('overviewEntry').onclick=()=>window.MonoPanels.recordEntry();
+  const quickActions = byId('quickActions');
   byId('dockAdd').onclick=()=>{
+    byId('dockAdd').focus({preventScroll:true});
     if(route()==='goals') window.MonoPanels.editGoal();
-    else window.MonoPanels.editAccount();
+    else if (!mono.accounts.length) window.MonoPanels.editAccount();
+    else {
+      quickActions.returnValue = '';
+      quickActions.showModal();
+    }
   };
+  quickActions.addEventListener('click', event => {
+    if (event.target === quickActions) quickActions.close();
+  });
+  quickActions.addEventListener('close', () => {
+    byId('dockAdd').focus({preventScroll:true});
+    if (quickActions.returnValue === 'entry') window.MonoPanels.recordEntry();
+    if (quickActions.returnValue === 'account') window.MonoPanels.editAccount();
+  });
   byId('startPersonal').onclick=()=>{closeMenu();byId('startError').textContent='';byId('startDialog').showModal()};
   byId('cancelStart').onclick=()=>byId('startDialog').close();
   byId('confirmStart').onclick=()=>{
@@ -468,7 +487,10 @@
     location.reload();
   };
   document.querySelectorAll('[data-range]').forEach(b=>b.onclick=()=>{period=b.dataset.range;overview()});
-  window.addEventListener('hashchange',()=>{closeMenu();render();window.scrollTo(0,0)});
+  window.addEventListener('hashchange',()=>{
+    if (quickActions.open) quickActions.close();
+    closeMenu();render();window.scrollTo(0,0);
+  });
   window.addEventListener('storage',e=>{
     if(e.key!==key || e.newValue===storedText)return;
     acceptData(readState());

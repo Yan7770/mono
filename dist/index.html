@@ -28,7 +28,7 @@
       <a href="#overview" data-page="overview" aria-label="财富总览"><i data-icon="grid"></i><span class="nav-label">总览</span></a>
       <a href="#accounts" data-page="accounts" aria-label="资产账户"><i data-icon="wallet"></i><span class="nav-label">账户</span></a>
       <a href="#goals" data-page="goals" aria-label="财富目标"><i data-icon="target"></i><span class="nav-label">目标</span></a>
-      <button class="dock-add" id="dockAdd" aria-label="添加资产" title="添加资产"><i data-icon="plus"></i></button>
+      <button class="dock-add" type="button" id="dockAdd" aria-haspopup="dialog" aria-label="记收支或添加账户" title="记收支或添加账户"><i data-icon="plus"></i></button>
     </nav>
     <div class="profile-wrap"><button class="profile" id="profileBtn" aria-label="个人空间" aria-expanded="false" aria-controls="profileMenu"><span class="avatar">M</span><span class="profile-label">个人空间</span><i data-icon="chevron"></i></button>
       <div class="profile-menu" id="profileMenu" hidden><strong>个人空间</strong><p>数据保存在当前浏览器</p>
@@ -44,7 +44,10 @@
   <main>
     <div id="overview">
       <section class="page-head"><div><h1>财富总览</h1><div class="date"><time datetime="2026-11-21">2026年11月21日</time></div></div>
-        <button class="primary desktop-add" id="addAsset"><i data-icon="plus"></i>添加资产</button>
+        <div class="overview-actions">
+          <button class="mp-secondary" type="button" id="addAsset"><i data-icon="plus"></i>添加账户</button>
+          <button class="mp-primary" type="button" id="overviewEntry" aria-haspopup="dialog"><i data-icon="entry"></i>记收支</button>
+        </div>
       </section>
       <section class="balance-card" aria-labelledby="balanceTitle">
         <div class="balance-info">
@@ -81,6 +84,15 @@
     <div id="secondary" hidden></div>
   </main>
   <footer><span id="dataNote">本地保存</span></footer>
+  <dialog class="mp-dialog quick-actions" id="quickActions" aria-label="快捷操作" autofocus>
+    <form method="dialog">
+      <div class="quick-action-list">
+        <button value="entry"><i data-icon="entry"></i>记收支</button>
+        <button value="account"><i data-icon="plus"></i>添加账户</button>
+      </div>
+      <button class="quick-cancel" value="cancel">取消</button>
+    </form>
+  </dialog>
   <dialog class="start-dialog" id="startDialog" aria-labelledby="startTitle"><h2 id="startTitle">启用我的资产空间</h2><p>从空白账户和目标开始，按天保存自己的净资产记录。此操作将替换当前示例和对示例的修改。</p><p id="startError" role="alert"></p><div><button id="cancelStart" autofocus>取消</button><button class="primary" id="confirmStart">从空白开始</button></div></dialog>
   <dialog class="start-dialog" id="resetDialog" aria-labelledby="resetTitle" aria-describedby="resetDescription">
     <h2 id="resetTitle">重置所有数据？</h2>

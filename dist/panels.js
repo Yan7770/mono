@@ -4,7 +4,7 @@
   const types = ['现金存款', '投资资产', '固定资产', '其他资产', '负债'];
   const iconPaths = {
     plus: '<path d="M12 5v14M5 12h14"/>',
-    update: '<path d="M19.5 12A7.5 7.5 0 1 1 17 6.4l2.5 2.6M19.5 4.4V9h-4.6"/>',
+    entry: '<path d="M7 4v13m-4-4 4 4 4-4m6 7V7m-4 4 4-4 4 4"/>',
     edit: '<path d="m14.5 5.5 4 4M4 20l4.5-1 12-12a1.6 1.6 0 0 0 0-2.3l-1.2-1.2a1.6 1.6 0 0 0-2.3 0l-12 12Z"/>',
     close: '<path d="m6 6 12 12M18 6 6 18"/>',
     goal: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.8"/><circle cx="12" cy="12" r="1.2"/>',
@@ -86,7 +86,7 @@
     const dialog = el('dialog', 'mp-dialog mp-batch-dialog');
     dialog.setAttribute('aria-labelledby', 'mp-batch-title');
     dialog.setAttribute('aria-describedby', 'mp-batch-intro');
-    const title = el('h2', '', '更新余额');
+    const title = el('h2', '', '记收支');
     title.id = 'mp-batch-title';
     const close = button('', 'mp-close', () => dialog.close(), 'close');
     close.setAttribute('aria-label', '关闭');
@@ -317,7 +317,7 @@
       () => isAccount ? editAccount() : editGoal(), 'plus');
     const controls = el('div', 'mp-heading-actions');
     if (isAccount && window.mono.accounts.length) {
-      controls.append(button('更新余额', 'mp-secondary mp-update-balances', batchBalances, 'update'));
+      controls.append(button('记收支', 'mp-secondary mp-update-balances', batchBalances, 'entry'));
     }
     controls.append(add);
     heading.append(headingText, controls);
@@ -446,5 +446,5 @@
   }
   const editAccount = id => editor('account', id);
   const editGoal = id => editor('goal', id);
-  window.MonoPanels = {render, editAccount, editGoal};
+  window.MonoPanels = {render, editAccount, editGoal, recordEntry: batchBalances};
 })();
