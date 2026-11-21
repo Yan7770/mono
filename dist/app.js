@@ -230,7 +230,9 @@
       row.querySelector('strong').textContent=account.name;
       row.querySelector('small').textContent=account.bank;
       row.querySelector('.asset-kind').textContent=account.type;
-      row.querySelector('.amount').textContent=(mono.hidden?'':'¥ ')+mono.money(account.balance);
+      const value = row.querySelector('.amount');
+      value.dataset.amountKey = 'account-' + account.id;
+      value.textContent=(mono.hidden?'':'¥ ')+mono.money(account.balance);
       row.querySelector('.share-track span').style.width=share+'%';
       row.querySelector('.share-value').textContent=account.type==='负债'?'—':share.toFixed(1)+'%';
       row.querySelector('.row-open').setAttribute('aria-label','编辑'+account.name);
@@ -284,7 +286,7 @@
       attributed += delta;
       const account = current || previous;
       const suffix = !previous ? ' · 新增' : !current ? ' · 已移除' : '';
-      changes.push({name:account.name, type:account.type + suffix, delta});
+      changes.push({id, name:account.name, type:account.type + suffix, delta});
     }
     changes.sort((left,right) => Math.abs(right.delta) - Math.abs(left.delta));
     const remainder = cents(comparison.change) - attributed;
@@ -296,7 +298,7 @@
     if (partial) note('账户明细从首次可比较的记录开始。');
     const list = document.createElement('dl');
     list.className = 'change-list';
-    for (const {name,type,delta} of changes) {
+    for (const {id,name,type,delta} of changes) {
       const row = document.createElement('div');
       const label = document.createElement('dt');
       label.textContent = name;
@@ -304,6 +306,7 @@
       description.textContent = type;
       label.append(description);
       const value = document.createElement('dd');
+      value.dataset.amountKey = id == null ? 'early-change' : 'change-' + id;
       value.textContent = signedMoney(delta / 100,'¥');
       row.append(label,value);
       list.append(row);
@@ -354,8 +357,16 @@
     allocation(sums,gross);
     accountRows(gross);
   }
+  let renderedPage;
+  let amountsWereHidden;
   function render() {
     const page=route();
+    const root = byId(page === 'overview' ? 'overview' : 'secondary');
+    const samePage = renderedPage === page;
+    const compareAmounts = samePage && !mono.hidden && !amountsWereHidden &&
+      !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const previousAmounts = compareAmounts ? new Map(Array.from(root.querySelectorAll('[data-amount-key]'),
+      node => [node.dataset.amountKey, node.textContent])) : null;
     const action=mono.hidden?'显示金额':'隐藏金额';
     byId('togglePrivacy').innerHTML=tag(mono.hidden?'closed':'eye');
     byId('togglePrivacy').title=action;
@@ -375,8 +386,19 @@
       else link.removeAttribute('aria-current');
     });
     if(page==='overview') overview(); else window.MonoPanels.render(page);
+    if (renderedPage && !samePage) {
+      const content = page === 'overview' ? root : root.firstElementChild;
+      content.classList.add('page-enter');
+    }
+    if (previousAmounts) {
+      for (const node of root.querySelectorAll('[data-amount-key]')) {
+        window.MonoPanels.animateAmountChange(node, previousAmounts.get(node.dataset.amountKey));
+      }
+    }
+    renderedPage = page;
+    amountsWereHidden = mono.hidden;
     byId('startPersonal').hidden=mono.personal;
-    byId('dataNote').textContent=storageMessage||(mono.personal?'个人数据 · 本地保存':'体验空间 · 本地保存');
+    byId('dataNote').textContent=storageMessage||(mono.personal?'':'体验空间');
   }
   function closeMenu(){byId('profileMenu').hidden=true;byId('profileBtn').setAttribute('aria-expanded','false')}
   function privacy(){
@@ -486,7 +508,7 @@
     history.replaceState(null, '', '#overview');
     location.reload();
   };
-  document.querySelectorAll('[data-range]').forEach(b=>b.onclick=()=>{period=b.dataset.range;overview()});
+  document.querySelectorAll('[data-range]').forEach(b=>b.onclick=()=>{period=b.dataset.range;render()});
   window.addEventListener('hashchange',()=>{
     if (quickActions.open) quickActions.close();
     closeMenu();render();window.scrollTo(0,0);

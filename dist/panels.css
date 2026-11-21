@@ -62,7 +62,7 @@
   display: grid;
   grid-template-columns: 1.24fr 1fr 1fr;
   padding: 24px 0;
-  border: 1px solid var(--line, #e8e8e8);
+  border: 1px solid var(--card-border);
   border-radius: 24px;
   background: var(--soft, #f5f5f5);
 }
@@ -84,7 +84,7 @@
 }
 
 .mp-box, .mp-goal {
-  border: 1px solid var(--line, #e8e8e8);
+  border: 1px solid var(--card-border);
   border-radius: 24px;
   background: var(--surface, #fff);
 }

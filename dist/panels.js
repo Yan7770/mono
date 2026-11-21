@@ -41,9 +41,25 @@
     return window.mono.hidden || /^[¥￥]/.test(formatted) ? formatted : '¥' + formatted;
   };
   const sum = (items, field) => items.reduce((total, item) => total + Math.round(Number(item[field]) * 100), 0) / 100;
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  function animateAmountChange(node, previousText) {
+    const current = node.textContent;
+    if (window.mono.hidden || reducedMotion.matches || !previousText || previousText === current ||
+        !/\d/.test(previousText) || !/\d/.test(current)) return;
+    // Only the final text is painted. Repeated edits replace the previous fade.
+    for (const animation of node.getAnimations()) {
+      if (animation.id === 'amount-change') animation.cancel();
+    }
+    node.animate([{opacity: .66}, {opacity: 1}], {id: 'amount-change', duration: 160, easing: 'ease-out'});
+  }
+  function amountLabel(tag, cls, text, key) {
+    const node = el(tag, cls, text);
+    node.dataset.amountKey = key;
+    return node;
+  }
   const metric = (name, number, emphasis) => {
     const block = el('div', 'mp-metric' + (emphasis ? ' mp-emphasis' : ''));
-    block.append(el('div', 'mp-meta', name), el('div', 'mp-value', amount(number)));
+    block.append(el('div', 'mp-meta', name), amountLabel('div', 'mp-value', amount(number), name));
     return block;
   };
   const editButton = (name, cb) => {
@@ -193,7 +209,9 @@
       const result = collect();
       form.querySelector('[aria-invalid="true"]')?.removeAttribute('aria-invalid');
       result.invalid?.setAttribute('aria-invalid', 'true');
+      const previous = net.textContent;
       net.textContent = result.invalid ? '—' : amount(result.netCents / 100);
+      animateAmountChange(net, previous);
       feedback.textContent = result.message || '';
       submit.disabled = Boolean(result.invalid) || !result.changes.length;
     }
@@ -243,7 +261,7 @@
         const detail = a.bank ? a.bank + ' · ' + a.type : a.type;
         const balance = amount(a.balance);
         intro.append(el('strong', '', a.name), el('span', 'mp-meta', detail));
-        row.append(badge, intro, el('span', 'mp-account-value', balance), icon('edit'));
+        row.append(badge, intro, amountLabel('span', 'mp-account-value', balance, 'account-' + a.id), icon('edit'));
         row.setAttribute('aria-label', '编辑' + a.name + '，' + detail + '，余额 ' + balance);
         row.addEventListener('click', () => editAccount(a.id));
         list.append(row);
@@ -288,7 +306,7 @@
       emblem.append(icon('goal'));
       header.append(emblem, el('h2', '', g.name), editButton(g.name, () => editGoal(g.id)));
       const figures = el('div', 'mp-goal-figures');
-      figures.append(el('span', 'mp-meta', '已存金额'), el('strong', 'mp-goal-value', amount(g.saved)));
+      figures.append(el('span', 'mp-meta', '已存金额'), amountLabel('strong', 'mp-goal-value', amount(g.saved), 'saved-' + g.id));
       const pct = g.target > 0 ? Math.min(100, Math.max(0, g.saved / g.target * 100)) : 0;
       const track = el('div', 'mp-track');
       const fill = el('div', 'mp-fill');
@@ -296,7 +314,7 @@
       track.append(fill);
       const label = el('div', 'mp-goal-progress');
       const pctLabel = window.mono.hidden ? '•••' : (pct > 99 && pct < 100 ? '99' : Math.round(pct)) + '%';
-      label.append(el('span', '', '目标 ' + amount(g.target)), el('span', 'mp-percent', pctLabel));
+      label.append(amountLabel('span', '', '目标 ' + amount(g.target), 'target-' + g.id), el('span', 'mp-percent', pctLabel));
       card.append(header, figures, track, label);
       group.append(card);
     });
@@ -446,5 +464,5 @@
   }
   const editAccount = id => editor('account', id);
   const editGoal = id => editor('goal', id);
-  window.MonoPanels = {render, editAccount, editGoal, recordEntry: batchBalances};
+  window.MonoPanels = {render, editAccount, editGoal, recordEntry: batchBalances, animateAmountChange};
 })();

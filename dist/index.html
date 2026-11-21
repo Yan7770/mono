@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="./batch.css">
   <link rel="stylesheet" href="./backup.css">
   <link rel="stylesheet" href="./changes.css">
+  <link rel="stylesheet" href="./interactions.css">
   <script defer src="./trend.js"></script>
   <script defer src="./panels.js"></script>
   <script defer src="./app.js"></script>
@@ -52,9 +53,9 @@
       <section class="balance-card" aria-labelledby="balanceTitle">
         <div class="balance-info">
           <div class="balance-title"><h2 id="balanceTitle">总净资产</h2><span class="currency-tag">CNY</span><button class="eye-btn" id="togglePrivacy" aria-label="隐藏金额" title="隐藏金额"><i data-icon="eye"></i></button></div>
-          <div class="net-row" id="netValue"></div>
+          <div class="net-row" id="netValue" data-amount-key="net"></div>
           <div class="balance-bottom">
-            <span id="weekMovement"><i aria-hidden="true"></i><span id="weekAmount"></span></span>
+            <span id="weekMovement"><i aria-hidden="true"></i><span id="weekAmount" data-amount-key="week"></span></span>
             <span class="week-period">近 7 天</span>
           </div>
         </div>
@@ -62,7 +63,7 @@
       <div class="analytics">
         <section class="panel trend-panel">
           <div class="panel-title"><h2>净资产走势</h2></div>
-          <button class="performance change-button" id="changeDetailsButton" type="button" aria-label="查看净资产变动明细" aria-describedby="changeValue changePct periodCaption" aria-expanded="false" aria-controls="changeDetails"><span id="changeValue"></span><span id="changePct"></span><i data-icon="chevron"></i></button>
+          <button class="performance change-button" id="changeDetailsButton" type="button" aria-label="查看净资产变动明细" aria-describedby="changeValue changePct periodCaption" aria-expanded="false" aria-controls="changeDetails"><span id="changeValue" data-amount-key="trend"></span><span id="changePct"></span><i data-icon="chevron"></i></button>
           <div class="stat-caption" id="periodCaption">近一年净资产增长</div>
           <div id="trendPlot" aria-label="净资产历史趋势图"></div>
           <div class="range-switch" role="group" aria-label="走势时间范围">
@@ -83,7 +84,7 @@
     </div>
     <div id="secondary" hidden></div>
   </main>
-  <footer><span id="dataNote">本地保存</span></footer>
+  <footer id="dataNote" role="status"></footer>
   <dialog class="mp-dialog quick-actions" id="quickActions" aria-label="快捷操作" autofocus>
     <form method="dialog">
       <div class="quick-action-list">

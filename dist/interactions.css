@@ -1,0 +1,48 @@
+:is(button:enabled:not([aria-disabled="true"]), .mainnav a, .view-all):active {
+  opacity: .78;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :is(button:enabled:not([aria-disabled="true"]), .mainnav a, .view-all) {
+    transition: transform 130ms ease-out, opacity 130ms ease-out;
+  }
+
+  :is(button:enabled:not([aria-disabled="true"]), .mainnav a, .view-all):active {
+    transform: scale(.98);
+    transition-duration: 65ms;
+  }
+
+  dialog[open] {
+    animation: mono-dialog-enter 180ms cubic-bezier(.2, .7, .2, 1);
+  }
+
+  dialog[open]::backdrop {
+    animation: mono-backdrop-enter 160ms ease-out;
+  }
+
+  .profile-menu:not([hidden]) {
+    transform-origin: top right;
+    animation: mono-dialog-enter 150ms ease-out;
+  }
+}
+
+@media (max-width: 700px) and (prefers-reduced-motion: no-preference) {
+  .mp-dialog[open] {
+    animation-name: mono-sheet-enter;
+  }
+}
+
+@keyframes mono-dialog-enter {
+  from { opacity: 0; transform: scale(.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes mono-sheet-enter {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes mono-backdrop-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
