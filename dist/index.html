@@ -1,12 +1,13 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#ffffff">
+  <meta name="theme-color" content="#181818">
   <title>MONO · 私人财富管理</title>
   <meta name="description" content="在 MONO 查看净资产、资产配置与财富目标。">
   <link rel="icon" href="./mono.svg" type="image/svg+xml">
+  <script src="./theme.js"></script>
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="./panels.css">
   <script defer src="./trend.js"></script>
@@ -15,7 +16,10 @@
 </head>
 <body>
   <header class="topbar"><div class="bar-inner">
-    <a href="#overview" class="brand" aria-label="MONO 首页"><img alt="" src="./mono.svg"><span>MONO</span></a>
+    <a href="#overview" class="brand" aria-label="MONO 首页"><svg class="brand-mark" width="32" height="32" viewBox="0 0 40 40" aria-hidden="true">
+      <rect width="40" height="40" rx="12" fill="var(--primary)"/>
+      <path d="M11.5 27V14l8.5 9 8.5-9v13" fill="none" stroke="var(--on-primary)" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg><span>MONO</span></a>
     <nav aria-label="主导航" class="mainnav">
       <a href="#overview" data-page="overview" aria-label="财富总览"><i data-icon="grid"></i><span>总览</span></a>
       <a href="#accounts" data-page="accounts" aria-label="资产账户"><i data-icon="wallet"></i><span>账户</span></a>
@@ -23,7 +27,10 @@
       <button class="dock-add" id="dockAdd" aria-label="添加资产" title="添加资产"><i data-icon="plus"></i></button>
     </nav>
     <div class="profile-wrap"><button class="profile" id="profileBtn" aria-label="个人空间" aria-expanded="false" aria-controls="profileMenu"><span class="avatar">M</span><span class="profile-label">个人空间</span><i data-icon="chevron"></i></button>
-      <div class="profile-menu" id="profileMenu" hidden><strong>个人空间</strong><p>数据保存在当前浏览器</p><button id="menuPrivacy"><i data-icon="eye"></i><span>隐藏金额</span></button><button id="startPersonal"><i data-icon="wallet"></i>启用我的资产空间</button></div>
+      <div class="profile-menu" id="profileMenu" hidden><strong>个人空间</strong><p>数据保存在当前浏览器</p>
+        <button id="menuTheme" type="button" role="switch" aria-checked="true"><i data-icon="moon"></i><span>深色模式</span><span class="theme-switch" aria-hidden="true"></span></button>
+        <button id="menuPrivacy"><i data-icon="eye"></i><span>隐藏金额</span></button><button id="startPersonal"><i data-icon="wallet"></i>启用我的资产空间</button>
+      </div>
     </div>
   </div></header>
   <main>

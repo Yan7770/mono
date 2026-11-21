@@ -13,7 +13,7 @@
 .mp-page :is(button, select), .mp-dialog :is(button, select, input) { font-family: inherit; }
 .mp-page select { cursor: pointer; }
 .mp-page :focus-visible, .mp-dialog :focus-visible {
-  outline: 2px solid var(--muted, #737373);
+  outline: 2px solid var(--focus);
   outline-offset: 3px;
 }
 .mp-heading, .mp-box-head, .mp-dialog-head {
@@ -46,11 +46,11 @@
   white-space: nowrap;
 }
 .mp-primary, .mp-destructive {
-  background: var(--primary, #232323);
-  color: #fff;
+  background: var(--primary);
+  color: var(--on-primary);
   font-weight: 500;
 }
-.mp-primary:hover, .mp-destructive:hover { background: #3d3d3d; color: #fff; }
+.mp-primary:hover, .mp-destructive:hover { background: var(--primary-hover); }
 .mp-primary .mp-icon { width: 16px; height: 16px; }
 .mp-secondary { color: var(--ink, #232323); border-color: var(--line, #e8e8e8); }
 .mp-secondary:hover, .mp-edit:hover, .mp-close:hover {
@@ -97,8 +97,9 @@
 .mp-box h2, .mp-goal h2 { font-size: 1.05rem; line-height: 1.45; font-weight: 500; }
 
 .mp-filter, .mp-field select {
+  -webkit-appearance: none;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Cpath d='m3.5 5.5 3.5 3.5 3.5-3.5' fill='none' stroke='%236f6f6f' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Cpath d='m3.5 5.5 3.5 3.5 3.5-3.5' fill='none' stroke='%23888888' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-position: right 12px center;
   background-repeat: no-repeat;
 }
@@ -208,9 +209,9 @@ body:has(.mp-dialog:modal) { overflow: hidden; }
   border: 1px solid var(--line, #e8e8e8);
   border-radius: 28px;
   background: var(--surface, #fff);
-  box-shadow: 0 20px 70px rgb(0 0 0 / 14%);
+  box-shadow: var(--shadow-raised);
 }
-.mp-dialog::backdrop { background: rgb(0 0 0 / 28%); }
+.mp-dialog::backdrop { background: var(--overlay, rgb(0 0 0 / 40%)); }
 .mp-dialog-head { margin-bottom: 16px; }
 .mp-dialog-head h2 { font-size: 1.25rem; font-weight: 500; letter-spacing: -.01em; }
 .mp-close { background: var(--soft, #f5f5f5); }
