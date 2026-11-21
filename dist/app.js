@@ -6,8 +6,8 @@
     wallet:'<path d="M4 7.5 16.5 4a2 2 0 0 1 2.5 1.8V8"/><rect x="3" y="7.8" width="18" height="12.2" rx="2.3"/><path d="M21 12h-5a2 2 0 0 0 0 4h5"/><circle cx="16.3" cy="14" r=".55"/>',
     target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
     plus:'<path d="M12 5v14M5 12h14"/>',
-    download:'<path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/>',
-    upload:'<path d="M12 16V4m-4 4 4-4 4 4M4 16v4h16v-4"/>',
+    archive:'<rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v11h14V9m-10 4h6"/>',
+    restore:'<path d="M3 5v5h5M3.8 9a8.5 8.5 0 1 1 .6 7M12 7v5l3 2"/>',
     moon:'<path d="M20.3 15.2a8.5 8.5 0 0 1-11.5-11.5A8.6 8.6 0 1 0 20.3 15.2Z"/>',
     chevron:'<path d="m6 9 6 6 6-6"/>',right:'<path d="m9 6 6 6-6 6"/>',
     eye:'<path d="M2 12s3.6-6.4 10-6.4S22 12 22 12s-3.6 6.4-10 6.4S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/>',
@@ -126,8 +126,8 @@
       }
       return result;
     },
-    exportBackup() {
-      return {format:'mono-backup',version:1,exportedAt:new Date().toISOString(),data:copy(currentData())};
+    captureBackup() {
+      return {version:1,createdAt:new Date().toISOString(),data:copy(currentData())};
     },
     restoreBackup(data) {
       const result = writeData(data);

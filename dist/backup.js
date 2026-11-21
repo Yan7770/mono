@@ -1,12 +1,10 @@
 (() => {
   'use strict';
 
-  const maxFileSize = 10 * 1024 * 1024;
   const maxBalance = 99999999999.99;
-  const maxItems = 5000;
-  const maxSnapshots = 36600;
   const types = new Set(['现金存款', '投资资产', '固定资产', '其他资产', '负债']);
-  const dateFormat = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' });
+  const dateFormat = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'long', timeStyle: 'medium' });
+  const localTime = value => dateFormat.format(new Date(value));
 
   function check(condition, message) {
     if (!condition) throw new Error(message);
@@ -49,8 +47,8 @@
     return value;
   }
 
-  function list(values, normalize, key, max = maxItems) {
-    check(Array.isArray(values) && values.length <= max, '备份列表有误或记录过多。');
+  function list(values, normalize, key) {
+    check(Array.isArray(values), '备份列表格式有误。');
     const seen = new Set();
     return values.map(value => {
       const item = normalize(record(value));
@@ -79,7 +77,7 @@
   }
 
   function positionSnapshot(value) {
-    const maxNet = maxItems * maxBalance;
+    const maxNet = Number.MAX_SAFE_INTEGER / 100;
     const entry = { net: amount(value.net, { min: -maxNet, max: maxNet }) };
     if (value.accounts !== undefined) {
       entry.accounts = list(value.accounts, position, 'id');
@@ -101,22 +99,19 @@
     return entry;
   }
 
-  function readBackup(source) {
-    let value;
-    try { value = JSON.parse(source); }
-    catch { throw new Error('此文件无法读取，请选择 MONO 导出的 JSON 备份。'); }
+  function readBackup(value) {
     const backup = record(value);
-    check(backup.format === 'mono-backup', '请选择 MONO 导出的备份文件。');
     check(backup.version === 1, '当前版本无法读取此备份格式。');
     const { accounts, goals, hidden, edited, personal, snapshots } = record(backup.data);
     check([hidden, edited, personal].every(flag => typeof flag === 'boolean'), '备份缺少有效的空间设置。');
     return {
-      exportedAt: timestamp(backup.exportedAt),
+      version: 1,
+      createdAt: timestamp(backup.createdAt),
       data: {
         accounts: list(accounts, account, 'id'),
         goals: list(goals, goal, 'id'),
         hidden, edited, personal,
-        snapshots: list(snapshots, snapshot, 'date', maxSnapshots).sort((a, b) => a.date.localeCompare(b.date))
+        snapshots: list(snapshots, snapshot, 'date').sort((a, b) => a.date.localeCompare(b.date))
       }
     };
   }
@@ -163,132 +158,108 @@
     return { dialog, heading, explanation, body, feedback, actions };
   }
 
-  function downloadFile(file) {
-    const url = URL.createObjectURL(file);
-    const link = element('a');
-    link.href = url;
-    link.download = file.name;
-    document.body.append(link);
-    try { link.click(); }
-    finally {
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 30000);
-    }
+  function finish(view, title, description) {
+    view.heading.textContent = title;
+    view.explanation.textContent = description;
+    view.body.replaceChildren();
+    view.feedback.textContent = '';
+    view.actions.replaceChildren(button('完成', 'mp-primary', () => view.dialog.close()));
+    view.actions.firstChild.focus();
   }
 
-  function exportBackup() {
+  function storageError(error, fallback) {
+    if (error.name === 'QuotaExceededError') return '本地存储空间不足，未能保存这次备份。';
+    if (error.name === 'SecurityError') return '浏览器限制了本地存储，请检查网站的存储权限。';
+    return error instanceof Error && error.name === 'Error' ? error.message : fallback;
+  }
+
+  async function createBackup() {
     if (document.querySelector('dialog[open]')) return;
-    const { dialog, feedback, actions } = showDialog('导出备份', '备份文件包含资产金额，请妥善保管。');
+    const view = showDialog('本地备份', '正在保存当前数据…');
+    view.dialog.showModal();
     try {
-      const backup = window.mono.exportBackup();
-      const slug = backup.exportedAt.slice(0, 19).replace(/:/g, '-').replace('T', '_');
-      const file = new File([JSON.stringify(backup)], 'MONO-' + slug + '.json', { type: 'application/json' });
-      check(file.size <= maxFileSize, '备份大于可恢复的文件大小。');
-      const download = () => {
-        try {
-          downloadFile(file);
-          dialog.close();
-        } catch {
-          feedback.textContent = '暂时无法下载，请重试。';
-        }
-      };
-      let canShareFile = false;
-      try { canShareFile = typeof navigator.share === 'function' && navigator.canShare?.({ files: [file] }); }
-      catch {}
-      if (canShareFile) {
-        actions.append(button('下载文件', 'mp-secondary', download));
-        let sharing = false;
-        actions.append(button('分享或存储', 'mp-primary', async () => {
-          if (sharing) return;
-          sharing = true;
-          feedback.textContent = '';
-          try {
-            await navigator.share({ files: [file] });
-            if (dialog.open) dialog.close();
-          } catch (error) {
-            if (error.name !== 'AbortError') feedback.textContent = '无法打开共享菜单。请使用「下载文件」。';
-          } finally {
-            sharing = false;
-          }
-        }));
-      } else {
-        actions.append(button('下载备份', 'mp-primary', download));
-      }
+      const backup = readBackup(window.mono.captureBackup());
+      await window.MonoBackupStore.save(backup);
+      if (view.dialog.open) finish(view, '备份完成', localTime(backup.createdAt) + ' 已保存。当前浏览器保留最近三份备份。');
     } catch (error) {
-      feedback.textContent = error.message || '暂时无法导出备份。';
+      if (!view.dialog.open) return;
+      view.heading.textContent = '备份失败';
+      view.explanation.textContent = storageError(error, '无法写入本地备份，请检查浏览器存储后重试。');
+      view.actions.append(button('关闭', 'mp-secondary', () => view.dialog.close()));
     }
-    dialog.showModal();
   }
 
-  function showPreview(container, backup) {
-    const details = element('dl', 'mono-backup-summary');
-    const rows = [
-      ['备份时间', dateFormat.format(new Date(backup.exportedAt))],
-      ['空间', backup.data.personal ? '个人资产' : '示例数据'],
-      ['资产账户', String(backup.data.accounts.length)],
-      ['财富目标', String(backup.data.goals.length)]
-    ];
-    for (const [label, value] of rows) {
-      details.append(element('dt', '', label), element('dd', '', value));
-    }
-    container.replaceChildren(details, element('p', 'mono-backup-description', '确认后，备份将替换当前浏览器中的资产记录和财富目标。'));
-  }
-
-  function restoreBackup() {
+  async function restoreBackup() {
     if (document.querySelector('dialog[open]')) return;
-    const { dialog, heading, explanation, body, feedback, actions } = showDialog('恢复备份', '选择 MONO 导出的 JSON 备份文件。');
-    const picker = element('label', 'mp-secondary mono-backup-picker', '选择备份文件');
-    const input = element('input');
-    input.type = 'file';
-    input.accept = '.json,application/json';
-    picker.append(input);
-    const preview = element('div', 'mono-backup-preview');
-    preview.setAttribute('aria-live', 'polite');
-    body.append(picker, preview);
-    let selection = 0;
-    let pending;
-    const confirm = button('确认替换并恢复', 'mp-primary', () => {
-      if (!pending) return;
-      const result = window.mono.restoreBackup(pending.data);
-      if (!result.ok) {
-        feedback.textContent = result.message || '备份恢复失败，请重试。';
-        return;
-      }
-      pending = null;
-      selection++;
-      heading.textContent = '恢复完成';
-      explanation.textContent = '备份已恢复到当前浏览器。';
-      feedback.textContent = '';
-      body.replaceChildren();
-      const done = button('完成', 'mp-primary', () => dialog.close());
-      actions.replaceChildren(done);
-      done.focus();
-    });
-    confirm.hidden = true;
-    actions.append(button('取消', 'mp-secondary', () => dialog.close()), confirm);
-    input.addEventListener('change', async () => {
-      const file = input.files[0];
-      if (!file) return;
-      const request = ++selection;
-      input.value = '';
-      pending = null;
-      preview.replaceChildren();
-      feedback.textContent = '';
-      confirm.hidden = true;
-      try {
-        check(file.size <= maxFileSize, '备份文件过大，请选择 10 MB 以内的 JSON 文件。');
-        const backup = readBackup(await file.text());
-        if (request !== selection || !dialog.open) return;
-        showPreview(preview, backup);
-        pending = backup;
-        confirm.hidden = false;
-      } catch (error) {
-        if (request === selection && dialog.open) feedback.textContent = error.message || '读取备份失败。';
-      }
-    });
+    const view = showDialog('恢复备份', '正在读取本地备份…');
+    const { dialog, heading, explanation, body, feedback, actions } = view;
     dialog.showModal();
+
+    function choose(entry) {
+      heading.textContent = '恢复这份备份？';
+      explanation.textContent = '恢复后，当前账户、财富目标、历史记录和金额显示设置将被替换。';
+      const details = element('dl', 'mono-backup-summary');
+      const rows = [
+        ['备份时间', localTime(entry.createdAt)],
+        ['备份记录', '第 ' + entry.id + ' 次'],
+        ['资产空间', entry.personal ? '个人资产' : '示例数据'],
+        ['资产账户', String(entry.accountCount)],
+        ['财富目标', String(entry.goalCount)]
+      ];
+      for (const [label, value] of rows) details.append(element('dt', '', label), element('dd', '', value));
+      body.replaceChildren(details);
+      feedback.textContent = '';
+      const back = button('返回列表', 'mp-secondary', showList);
+      const confirm = button('确认恢复', 'mp-primary', async () => {
+        back.disabled = confirm.disabled = true;
+        feedback.textContent = '';
+        try {
+          const value = await window.MonoBackupStore.get(entry.id);
+          if (!dialog.open) return;
+          check(value, '这份备份已移出最近三份，请返回列表重新选择。');
+          const backup = readBackup(value);
+          const result = window.mono.restoreBackup(backup.data);
+          check(result.ok, result.message || '恢复失败，请重试。');
+          finish(view, '恢复完成', '已恢复 ' + localTime(backup.createdAt) + ' 的备份。');
+        } catch (error) {
+          if (dialog.open) feedback.textContent = storageError(error, '无法恢复这份本地备份，请重试。');
+        } finally {
+          back.disabled = confirm.disabled = false;
+        }
+      });
+      actions.replaceChildren(back, confirm);
+      back.focus();
+    }
+
+    async function showList() {
+      heading.textContent = '恢复备份';
+      explanation.textContent = '正在读取本地备份…';
+      body.replaceChildren();
+      feedback.textContent = '';
+      actions.replaceChildren(button('取消', 'mp-secondary', () => dialog.close()));
+      try {
+        const entries = await window.MonoBackupStore.list();
+        if (!dialog.open) return;
+        explanation.textContent = entries.length
+          ? '请选择要恢复的备份，最近的排在最前。'
+          : '暂无本地备份。在「个人空间」点击「本地备份」即可保存第一份。';
+        for (const entry of entries) {
+          const row = button('', 'mono-backup-entry', () => choose(entry));
+          const time = element('time', '', localTime(entry.createdAt));
+          time.dateTime = entry.createdAt;
+          const summary = '第 ' + entry.id + ' 次 · ' + entry.accountCount + ' 个账户 · ' + entry.goalCount + ' 个目标';
+          row.append(time, element('small', '', summary));
+          body.append(row);
+        }
+        (body.firstChild || actions.firstChild).focus();
+      } catch (error) {
+        if (dialog.open) explanation.textContent = storageError(error, '无法读取本地备份，请检查浏览器存储后重试。');
+      }
+    }
+
+    await showList();
   }
 
-  document.getElementById('exportBackup')?.addEventListener('click', exportBackup);
-  document.getElementById('restoreBackup')?.addEventListener('click', restoreBackup);
+  document.getElementById('localBackup').addEventListener('click', createBackup);
+  document.getElementById('restoreBackup').addEventListener('click', restoreBackup);
 })();
