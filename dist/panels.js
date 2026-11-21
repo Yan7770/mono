@@ -80,8 +80,6 @@
 
   const balanceDate = new Intl.DateTimeFormat('zh-CN', {year: 'numeric', month: '2-digit', day: '2-digit'});
   const maxBalance = 99999999999.99;
-  const signedAmount = value => window.mono.hidden ? amount(value)
-    : (value > 0 ? '+' : value < 0 ? '−' : '') + amount(Math.abs(value));
 
   function batchBalances() {
     if (document.querySelector('dialog[open]') || !window.mono.accounts.length) return;
@@ -95,8 +93,19 @@
     close.autofocus = true;
     const head = el('div', 'mp-dialog-head');
     head.append(title, close);
-    const intro = el('p', 'mp-batch-intro', '只填写有变化的账户，留空保留原余额。');
+    const intro = el('p', 'mp-batch-intro', '填写本次收支金额，留空的账户保持原余额。');
     intro.id = 'mp-batch-intro';
+    let mode = 'expense';
+    const modes = el('div', 'mp-batch-modes');
+    modes.setAttribute('role', 'group');
+    modes.setAttribute('aria-label', '收支类型');
+    const expense = button('支出', '', () => selectMode('expense'));
+    const income = button('收入', '', () => selectMode('income'));
+    modes.append(expense, income);
+    const currentNetCents = window.mono.accounts.reduce((total, account) => {
+      const cents = Math.round(account.balance * 100);
+      return total + (account.type === '负债' ? -cents : cents);
+    }, 0);
     const fields = el('div', 'mp-batch-fields');
     const rows = window.mono.accounts.map(account => {
       const row = el('label', 'mp-field mp-batch-row');
@@ -104,7 +113,7 @@
       const meta = el('span', 'mp-meta');
       const date = Date.parse(account.updatedAt);
       meta.append(
-        el('span', '', '当前 ' + amount(account.balance)),
+        el('span', '', (account.type === '负债' ? '当前欠款 ' : '当前余额 ') + amount(account.balance)),
         el('span', '', Number.isFinite(date) ? '更新于 ' + balanceDate.format(date) : '更新时间未记录')
       );
       label.append(el('strong', '', account.name), meta);
@@ -113,8 +122,6 @@
       input.inputMode = 'decimal';
       input.autocomplete = 'off';
       input.maxLength = 20;
-      input.placeholder = '新余额';
-      input.setAttribute('aria-label', account.name + '的新余额（元）');
       meta.id = 'mp-batch-info-' + fields.children.length;
       input.setAttribute('aria-describedby', meta.id);
       row.append(label, input);
@@ -123,8 +130,9 @@
     });
 
     const preview = el('div', 'mp-batch-preview');
-    const net = el('output', 'mp-batch-delta');
-    preview.append(el('span', '', '本次净资产变化'), net);
+    const net = el('output', 'mp-batch-total');
+    net.setAttribute('aria-label', '更新后的资产');
+    preview.append(el('span', '', '更新后的资产'), net);
     const feedback = el('p', 'mp-feedback');
     feedback.setAttribute('role', 'alert');
     const submit = el('button', 'mp-primary', '保存更新');
@@ -135,58 +143,72 @@
     footer.append(preview, feedback, actions);
     const form = el('form', 'mp-batch-form');
     form.append(fields, footer);
-    dialog.append(head, intro, form);
+    dialog.append(head, intro, modes, form);
+
+    function selectMode(next) {
+      mode = next;
+      const spending = mode === 'expense';
+      expense.setAttribute('aria-pressed', String(spending));
+      income.setAttribute('aria-pressed', String(!spending));
+      net.dataset.mode = mode;
+      for (const {account, input} of rows) {
+        let label = spending ? '支出金额' : '收入金额';
+        if (account.type === '负债') label = spending ? '增加欠款' : '减少欠款';
+        input.placeholder = label;
+        input.setAttribute('aria-label', account.name + '的' + label + '（元）');
+      }
+      refreshPreview();
+    }
 
     function collect() {
       const changes = [];
-      let invalid;
-      let deltaCents = 0;
+      let netCents = currentNetCents;
       for (const {account, input} of rows) {
         const value = input.value.normalize('NFKC').trim();
         if (!value) continue;
         const plain = /^\d*\.?\d{0,2}$/.test(value);
         const grouped = /^\d{1,3}(?:,\d{3})+(?:\.\d{0,2})?$/.test(value);
-        const balance = Number(value.replaceAll(',', ''));
-        if ((!plain && !grouped) || !Number.isFinite(balance) || balance > maxBalance) {
-          invalid ||= input;
-          continue;
+        const entered = Number(value.replaceAll(',', ''));
+        if ((!plain && !grouped) || !Number.isFinite(entered) || entered > maxBalance) {
+          return {invalid: input, message: '请输入 0 至 99,999,999,999.99 元的金额，最多保留两位小数。'};
         }
-        const cents = Math.round(balance * 100);
-        const difference = cents - Math.round(account.balance * 100);
-        if (!difference) continue;
-        changes.push({id: account.id, balance: cents / 100});
-        deltaCents += account.type === '负债' ? -difference : difference;
+        const cents = Math.round(entered * 100);
+        if (cents === 0) continue;
+        const movement = mode === 'income' ? cents : -cents;
+        const isDebt = account.type === '负债';
+        const nextBalance = Math.round(account.balance * 100) + (isDebt ? -movement : movement);
+        if (nextBalance < 0) {
+          return {invalid: input, message: account.name + (isDebt ? '的减少金额超过当前欠款。' : '的支出超过当前余额。')};
+        }
+        if (nextBalance > Math.round(maxBalance * 100)) {
+          return {invalid: input, message: account.name + '更新后的余额超过可保存的上限。'};
+        }
+        changes.push({id: account.id, balance: nextBalance / 100});
+        netCents += movement;
       }
-      return {changes, invalid, delta: deltaCents / 100};
+      return {changes, netCents};
     }
 
     function refreshPreview() {
-      const {changes, invalid, delta} = collect();
-      net.textContent = invalid ? '—' : signedAmount(delta);
-      submit.disabled = !changes.length && !invalid;
+      const result = collect();
+      form.querySelector('[aria-invalid="true"]')?.removeAttribute('aria-invalid');
+      result.invalid?.setAttribute('aria-invalid', 'true');
+      net.textContent = result.invalid ? '—' : amount(result.netCents / 100);
+      feedback.textContent = result.message || '';
+      submit.disabled = Boolean(result.invalid) || !result.changes.length;
     }
 
-    form.addEventListener('input', event => {
-      event.target.removeAttribute('aria-invalid');
-      feedback.textContent = '';
-      refreshPreview();
-    });
+    form.addEventListener('input', refreshPreview);
     form.addEventListener('submit', event => {
       event.preventDefault();
-      const {changes, invalid} = collect();
-      if (invalid) {
-        invalid.setAttribute('aria-invalid', 'true');
-        feedback.textContent = '请输入 0 至 99,999,999,999.99 元，最多保留两位小数。';
-        invalid.focus();
-        return;
-      }
-      if (!changes.length) return;
+      const {changes} = collect();
+      if (!dialog.open || !changes?.length) return;
       const result = window.mono.updateBalances(changes);
       if (result.ok) dialog.close();
       else feedback.textContent = result.message || '余额未保存，请重试。';
     });
 
-    refreshPreview();
+    selectMode('expense');
     openDialog(dialog, () => document.querySelector('.mp-update-balances'));
   }
 
