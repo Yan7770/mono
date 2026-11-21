@@ -17,6 +17,11 @@
   try { preference = localStorage.getItem(storageKey); } catch {}
   applyTheme(preference);
 
+  window.resetMonoTheme = () => {
+    localStorage.removeItem(storageKey);
+    applyTheme(null);
+  };
+
   document.addEventListener('DOMContentLoaded', () => {
     toggle = document.getElementById('menuTheme');
     toggle.setAttribute('aria-checked', String(root.dataset.theme === 'dark'));

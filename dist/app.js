@@ -8,6 +8,7 @@
     plus:'<path d="M12 5v14M5 12h14"/>',
     archive:'<rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v11h14V9m-10 4h6"/>',
     restore:'<path d="M3 5v5h5M3.8 9a8.5 8.5 0 1 1 .6 7M12 7v5l3 2"/>',
+    trash:'<path d="M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7"/>',
     moon:'<path d="M20.3 15.2a8.5 8.5 0 0 1-11.5-11.5A8.6 8.6 0 1 0 20.3 15.2Z"/>',
     chevron:'<path d="m6 9 6 6 6-6"/>',right:'<path d="m9 6 6 6-6 6"/>',
     eye:'<path d="M2 12s3.6-6.4 10-6.4S22 12 22 12s-3.6 6.4-10 6.4S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/>',
@@ -142,6 +143,9 @@
   function currentData() {
     const {accounts,goals,hidden,edited,personal,snapshots} = mono;
     return {accounts,goals,hidden,edited,personal,snapshots};
+  }
+  function emptyPersonalSpace(hidden = false) {
+    return {accounts:[], goals:[], snapshots:[], personal:true, edited:false, hidden};
   }
   function acceptData(data) {
     Object.assign(mono,data);
@@ -393,7 +397,7 @@
   byId('startPersonal').onclick=()=>{closeMenu();byId('startError').textContent='';byId('startDialog').showModal()};
   byId('cancelStart').onclick=()=>byId('startDialog').close();
   byId('confirmStart').onclick=()=>{
-    const candidate = {...currentData(),accounts:[],goals:[],snapshots:[],personal:true,edited:false};
+    const candidate = emptyPersonalSpace(mono.hidden);
     const result = writeData(candidate);
     if (!result.ok) {
       byId('startError').textContent = result.message;
@@ -402,6 +406,57 @@
     undoState = undefined;
     acceptData(candidate);
     byId('startDialog').close();location.hash='overview';render();
+  };
+  const resetDialog = byId('resetDialog');
+  const confirmReset = byId('confirmReset');
+  let resetReadyAt = Infinity;
+  let resetTimer;
+  function updateResetCountdown() {
+    const remaining = resetReadyAt - performance.now();
+    const seconds = Math.max(0, Math.ceil(remaining / 1000));
+    confirmReset.disabled = seconds > 0;
+    confirmReset.textContent = seconds ? '确认重置（' + seconds + ' 秒）' : '确认重置';
+    if (seconds) {
+      resetTimer = setTimeout(updateResetCountdown, remaining - (seconds - 1) * 1000);
+    }
+  }
+  byId('resetData').onclick = () => {
+    closeMenu();
+    byId('resetError').textContent = '';
+    confirmReset.disabled = true;
+    resetDialog.showModal();
+    resetReadyAt = performance.now() + 5000;
+    clearTimeout(resetTimer);
+    updateResetCountdown();
+  };
+  byId('cancelReset').onclick = () => resetDialog.close();
+  resetDialog.addEventListener('close', () => {
+    if (resetDialog.open) return;
+    clearTimeout(resetTimer);
+    resetReadyAt = Infinity;
+    confirmReset.disabled = true;
+    byId('profileBtn').focus();
+  });
+  confirmReset.onclick = () => {
+    if (!resetDialog.open || confirmReset.disabled || performance.now() < resetReadyAt) return;
+    const candidate = emptyPersonalSpace();
+    const result = writeData(candidate);
+    if (!result.ok) {
+      byId('resetError').textContent = result.message;
+      return;
+    }
+    undoState = undefined;
+    acceptData(candidate);
+    try {
+      window.resetMonoTheme();
+    } catch {
+      render();
+      byId('resetError').textContent = '资产数据已清空，主题设置重置失败。请检查浏览器存储权限后重试。';
+      return;
+    }
+    resetDialog.close();
+    history.replaceState(null, '', '#overview');
+    location.reload();
   };
   document.querySelectorAll('[data-range]').forEach(b=>b.onclick=()=>{period=b.dataset.range;overview()});
   window.addEventListener('hashchange',()=>{closeMenu();render();window.scrollTo(0,0)});

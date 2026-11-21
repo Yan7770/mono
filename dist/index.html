@@ -37,6 +37,7 @@
         <button id="localBackup" type="button"><i data-icon="archive"></i>本地备份</button>
         <button id="restoreBackup" type="button"><i data-icon="restore"></i>恢复备份</button>
         <button id="startPersonal"><i data-icon="wallet"></i>启用我的资产空间</button>
+        <button id="resetData" type="button" aria-haspopup="dialog" aria-controls="resetDialog"><i data-icon="trash"></i>重置数据</button>
       </div>
     </div>
   </div></header>
@@ -81,5 +82,15 @@
   </main>
   <footer><span id="dataNote">示例数据 · 本地保存</span></footer>
   <dialog class="start-dialog" id="startDialog" aria-labelledby="startTitle"><h2 id="startTitle">启用我的资产空间</h2><p>从空白账户和目标开始，按天保存自己的净资产记录。此操作将替换当前示例和对示例的修改。</p><p id="startError" role="alert"></p><div><button id="cancelStart" autofocus>取消</button><button class="primary" id="confirmStart">从空白开始</button></div></dialog>
+  <dialog class="start-dialog" id="resetDialog" aria-labelledby="resetTitle" aria-describedby="resetDescription">
+    <h2 id="resetTitle">重置所有数据？</h2>
+    <p id="resetDescription">将清空当前浏览器中的资产账户、财富目标和历史记录，并恢复默认设置。已有的本地备份会保留。</p>
+    <p>请等待 5 秒后再确认。</p>
+    <p id="resetError" role="alert"></p>
+    <div>
+      <button type="button" id="cancelReset" autofocus>取消</button>
+      <button type="button" id="confirmReset" class="primary" disabled>确认重置（5 秒）</button>
+    </div>
+  </dialog>
 </body>
 </html>

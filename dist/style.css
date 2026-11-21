@@ -120,6 +120,8 @@ i svg { width: 20px; height: 20px; }
   top: calc(100% + 9px);
   right: 0;
   width: min(254px, calc(100vw - 40px));
+  max-height: calc(100dvh - 80px - env(safe-area-inset-top));
+  overflow-y: auto;
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: 19px;
@@ -253,7 +255,9 @@ footer { padding-block: 22px 25px; color: var(--muted); text-align: center; font
 .start-dialog h2 { font-size: 1.25rem; font-weight: 500; }
 .start-dialog p { margin-top: 10px; color: var(--muted); font-size: .95rem; line-height: 1.7; }
 .start-dialog div { display: flex; justify-content: flex-end; gap: 10px; margin-top: 19px; }
-#cancelStart { min-height: 44px; padding-inline: 15px; border-radius: 100px; background: var(--soft); }
+#cancelStart, #cancelReset { min-height: 44px; padding-inline: 15px; border-radius: 100px; background: var(--soft); }
+#confirmReset:disabled { background: var(--soft); color: var(--muted); cursor: not-allowed; }
+#resetError:empty { display: none; }
 
 @media (hover: hover) {
   .mainnav a:hover, .profile-menu button:hover, .eye-btn:hover, .view-all:hover, .row-open:hover { background: var(--hover); }
