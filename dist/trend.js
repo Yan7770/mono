@@ -105,14 +105,20 @@
   let activeHost;
   let activeOptions;
   let frame;
+  let dismissProbe;
+
+  document.addEventListener("pointerdown", event => {
+    if (activeHost && !activeHost.contains(event.target)) dismissProbe?.();
+  });
 
   function paint(plot, options) {
     const width = Math.max(180, plot.clientWidth || 640);
     const height = Math.max(104, plot.clientHeight || 198);
     const { period = "1Y", hidden = false, snapshots, date } = options;
     const { points, start, span } = timeline(period, options.net, snapshots, date);
+    dismissProbe = undefined;
     if (!points.length) {
-      plot.innerHTML = '<div role="status" style="display:grid;place-items:center;min-height:116px;height:100%;font-size:14px;color:#aaa99f">记录资产后即可查看走势</div>';
+      plot.innerHTML = '<div role="status" style="display:grid;place-items:center;min-height:116px;height:100%;font-size:14px;color:var(--muted,#707070)">记录资产后即可查看走势</div>';
       return;
     }
     const net = points[points.length - 1].value;
@@ -120,13 +126,14 @@
     const max = points.reduce((amount, point) => Math.max(amount, point.value), net);
     const { low, high, step } = axisFor(min, max);
     const left = 2;
-    const right = width - Math.max(44, axisLabel(high, step).length * 7.2 + 13);
-    const top = 8;
-    const bottom = height - 26;
+    const labelLength = Math.max(axisLabel(low, step).length, axisLabel(high, step).length);
+    const right = width - Math.max(42, labelLength * 7.5 + 11);
+    const top = 11;
+    const bottom = height - 24;
     const x = i => span ? left + i / span * (right - left) : right;
     const y = value => bottom - (value - low) / (high - low) * (bottom - top);
     const dateAt = i => new Date(start + i * day);
-    const xTicks = Math.min(span + 1, width < 400 ? 4 : 7, Math.floor((right - left) / 49) + 1);
+    const xTicks = Math.min(span + 1, width < 380 ? 4 : 7, Math.floor((right - left) / 52) + 1);
     const tickText = i => {
       const d = dateAt(i);
       if (!span) return d.toISOString().slice(0, 10);
@@ -140,13 +147,13 @@
     const pieces = [];
     for (let tick = low; tick <= high + step / 100; tick += step) {
       const level = y(tick).toFixed(2);
-      pieces.push(`<line x1="${left}" x2="${right}" y1="${level}" y2="${level}" stroke="#343630" stroke-dasharray="3 5"/>`);
-      pieces.push(`<text x="${width - 1}" y="${level}" text-anchor="end" dominant-baseline="middle">${hidden ? "•••" : axisLabel(tick, step)}</text>`);
+      pieces.push(`<line x1="${left}" x2="${right}" y1="${level}" y2="${level}" stroke="var(--line,#e5e5e5)"/>`);
+      pieces.push(`<text x="${width - 1}" y="${level}" dy=".35em" text-anchor="end">${hidden ? "•••" : axisLabel(tick, step)}</text>`);
     }
     for (let k = 0; k < xTicks; k++) {
       const i = xTicks === 1 ? 0 : Math.round(k / (xTicks - 1) * span);
       const anchor = k === xTicks - 1 ? "end" : k === 0 ? "start" : "middle";
-      pieces.push(`<text x="${x(i)}" y="${height - 3}" text-anchor="${anchor}">${tickText(i)}</text>`);
+      pieces.push(`<text x="${x(i)}" y="${height - 4}" text-anchor="${anchor}">${tickText(i)}</text>`);
     }
     const path = points.map(({ value, offset }, i) => {
       const px = x(offset).toFixed(2), py = y(value).toFixed(2);
@@ -154,30 +161,29 @@
       return Array.isArray(snapshots) ? "H" + px + "V" + py : "L" + px + " " + py;
     }).join("");
     const seriesPaths = span ? `<path d="${path}L${right} ${bottom}L${left} ${bottom}Z" fill="url(#monoTrendFill)"/>
-        <path d="${path}" fill="none" stroke="#dabe80" stroke-width="1.8"
+        <path d="${path}" fill="none" stroke="var(--ink,#242424)" stroke-width="1.7"
           stroke-linejoin="round" stroke-linecap="round"/>` : "";
     const endY = y(net).toFixed(2);
     plot.style.position = "relative";
     plot.innerHTML = `<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}"
         tabindex="0" role="img" aria-label="净资产趋势图，可使用左右方向键查看每日数值"
-        style="display:block;outline-offset:4px;touch-action:pan-y">
-        <defs><linearGradient id="monoTrendFill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#d6ba78" stop-opacity=".16"/>
-          <stop offset="100%" stop-color="#d6ba78" stop-opacity="0"/>
+        style="display:block;outline-offset:4px;touch-action:pan-y pinch-zoom;font-variant-numeric:tabular-nums">
+        <defs><linearGradient id="monoTrendFill" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="var(--ink,#242424)" stop-opacity=".12"/>
+          <stop offset="100%" stop-color="var(--ink,#242424)" stop-opacity=".015"/>
         </linearGradient></defs>
-        <g fill="#93958d" font-family="'IBM Plex Mono',Consolas,'Microsoft YaHei',monospace"
-          font-size="11">${pieces.join("")}</g>
+        <g fill="var(--muted,#707070)" font-family="inherit" font-size="11.5">${pieces.join("")}</g>
         ${seriesPaths}
-        <circle cx="${right}" cy="${endY}" r="6" fill="#dabe80" opacity=".13"/>
-        <circle cx="${right}" cy="${endY}" r="3.15" fill="#e3c991"/>
+        <circle cx="${right}" cy="${endY}" r="5.7" fill="var(--ink,#242424)" opacity=".1"/>
+        <circle cx="${right}" cy="${endY}" r="3.1" fill="var(--ink,#242424)"/>
         <g data-cursor visibility="hidden" pointer-events="none">
-          <line y1="${top}" y2="${bottom}" stroke="#a09271" stroke-dasharray="3 4"/>
-          <circle r="4" fill="#e7c989" stroke="#20211f" stroke-width="1.5"/>
+          <line y1="${top}" y2="${bottom}" stroke="var(--muted,#707070)" stroke-opacity=".55" stroke-dasharray="3 4"/>
+          <circle r="4.4" fill="var(--ink,#242424)" stroke="var(--surface,#fff)" stroke-width="1.8"/>
         </g>
       </svg><div data-tip role="status" hidden style="position:absolute;z-index:2;pointer-events:none;
-        box-sizing:border-box;white-space:nowrap;border:1px solid #504b3e;border-radius:5px;
-        background:#20211f;color:#eeeae1;padding:7px 10px;line-height:1.55;font-family:inherit;
-        font-size:12px;font-variant-numeric:tabular-nums;box-shadow:0 4px 14px #0004"></div>`;
+        box-sizing:border-box;white-space:nowrap;border:1px solid var(--line,#e5e5e5);border-radius:12px;
+        background:var(--surface,#fff);color:var(--ink,#242424);padding:8px 11px;line-height:1.55;
+        font:inherit;font-size:13px;font-variant-numeric:tabular-nums;box-shadow:0 5px 18px #00000012"></div>`;
 
     const svg = plot.firstElementChild;
     const cursor = svg.querySelector("[data-cursor]");
@@ -185,7 +191,9 @@
     let index = span;
     function show(i) {
       index = Math.max(0, Math.min(span, i));
-      const value = points.findLast(point => point.offset <= index).value;
+      let pointIndex = points.length - 1;
+      while (points[pointIndex].offset > index) pointIndex--;
+      const value = points[pointIndex].value;
       const px = x(index), py = y(value);
       const [line, circle] = cursor.children;
       line.setAttribute("x1", px);
@@ -193,8 +201,8 @@
       circle.setAttribute("cx", px);
       circle.setAttribute("cy", py);
       cursor.setAttribute("visibility", "visible");
-      tooltip.innerHTML = `<span style="color:#a6a79e">${dateAt(index).toISOString().slice(0, 10)}</span><br>
-        <strong>${hidden ? "••••••" : "¥ " + money.format(value)}</strong>`;
+      tooltip.innerHTML = `<span style="color:var(--muted,#707070);font-size:12px">${dateAt(index).toISOString().slice(0, 10)}</span><br>
+        <strong style="font-weight:550">${hidden ? "••••••" : "¥ " + money.format(value)}</strong>`;
       tooltip.hidden = false;
       const tipWidth = tooltip.offsetWidth;
       tooltip.style.left = Math.max(0, Math.min(width - tipWidth, px + tipWidth + 12 < right ? px + 12 : px - tipWidth - 12)) + "px";
@@ -204,18 +212,20 @@
       cursor.setAttribute("visibility", "hidden");
       tooltip.hidden = true;
     }
+    dismissProbe = hide;
     function track(event) {
       const rect = svg.getBoundingClientRect();
       const px = (event.clientX - rect.left) / rect.width * width;
       show(Math.round((px - left) / (right - left) * span));
     }
     svg.onpointermove = svg.onpointerdown = track;
-    svg.onpointerleave = svg.onblur = hide;
-    svg.onfocus = () => show(span);
+    svg.onpointerleave = event => { if (event.pointerType !== "touch") hide(); };
+    svg.onpointercancel = svg.onblur = hide;
+    svg.onfocus = () => { if (tooltip.hidden) show(index); };
     svg.onkeydown = event => {
       const moves = { ArrowLeft: index - 1, ArrowRight: index + 1, Home: 0, End: span };
       if (event.key === "Escape") hide();
-      if (Object.hasOwn(moves, event.key)) {
+      if (Object.prototype.hasOwnProperty.call(moves, event.key)) {
         event.preventDefault();
         show(moves[event.key]);
       }

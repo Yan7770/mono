@@ -76,12 +76,17 @@
         return;
       }
       entries.forEach(a => {
-        const row = el('div', 'mp-account');
+        const row = el('button', 'mp-account');
+        row.type = 'button';
         const badge = el('span', 'mp-account-icon');
         badge.append(icon(types.includes(a.type) ? a.type : '其他资产'));
-        const intro = el('div', 'mp-account-info');
-        intro.append(el('strong', '', a.name), el('div', 'mp-meta', a.bank ? a.bank + ' · ' + a.type : a.type));
-        row.append(badge, intro, el('div', 'mp-account-value', amount(a.balance)), editButton(a.name, () => editAccount(a.id)));
+        const intro = el('span', 'mp-account-info');
+        const detail = a.bank ? a.bank + ' · ' + a.type : a.type;
+        const balance = amount(a.balance);
+        intro.append(el('strong', '', a.name), el('span', 'mp-meta', detail));
+        row.append(badge, intro, el('span', 'mp-account-value', balance), icon('edit'));
+        row.setAttribute('aria-label', '编辑' + a.name + '，' + detail + '，余额 ' + balance);
+        row.addEventListener('click', () => editAccount(a.id));
         list.append(row);
       });
     };
@@ -156,7 +161,9 @@
     const title = el('h2', '', (existing ? '编辑' : '添加') + label);
     title.id = 'mp-dialog-title';
     const close = button('', 'mp-close', () => dialog.close(), 'close');
+    const touchLayout = window.matchMedia('(max-width: 700px), (pointer: coarse)').matches;
     close.setAttribute('aria-label', '关闭');
+    close.autofocus = touchLayout;
     head.append(title, close);
     const form = el('form', 'mp-form');
     const fields = el('div', 'mp-fields');
@@ -252,14 +259,32 @@
     });
     dialog.append(head, form);
     const opener = document.activeElement;
+    const viewport = window.visualViewport;
+    function fitSheet() {
+      dialog.style.setProperty('--mp-viewport-height', viewport.height + 'px');
+      const bottom = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+      dialog.style.setProperty('--mp-viewport-bottom', bottom + 'px');
+    }
     dialog.addEventListener('close', () => {
+      viewport?.removeEventListener('resize', fitSheet);
+      viewport?.removeEventListener('scroll', fitSheet);
       dialog.remove();
       if (opener?.isConnected && typeof opener.focus === 'function') opener.focus();
-      else document.querySelector('.mp-page-add')?.focus();
+      else {
+        const add = document.querySelector('.mp-page-add');
+        const dock = document.getElementById('dockAdd');
+        if (add?.getClientRects().length) add.focus();
+        else dock?.focus();
+      }
     }, {once: true});
     document.body.append(dialog);
     dialog.showModal();
-    inputs.name.focus();
+    if (viewport) {
+      fitSheet();
+      viewport.addEventListener('resize', fitSheet);
+      viewport.addEventListener('scroll', fitSheet);
+    }
+    if (!touchLayout) inputs.name.focus();
   }
   const editAccount = id => editor('account', id);
   const editGoal = id => editor('goal', id);

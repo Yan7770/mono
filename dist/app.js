@@ -2,16 +2,13 @@
   'use strict';
   const byId = id => document.getElementById(id);
   const icons = {
-    grid:'<rect x="3" y="3" width="7" height="7" rx="1.3"/><rect x="14" y="3" width="7" height="7" rx="1.3"/><rect x="3" y="14" width="7" height="7" rx="1.3"/><rect x="14" y="14" width="7" height="7" rx="1.3"/>',
+    grid:'<path d="M3.5 10.5 12 3.8l8.5 6.7v8a1.7 1.7 0 0 1-1.7 1.7H5.2a1.7 1.7 0 0 1-1.7-1.7z"/><path d="M9.3 20.2v-5.8h5.4v5.8"/>',
     wallet:'<path d="M4 7.5 16.5 4a2 2 0 0 1 2.5 1.8V8"/><rect x="3" y="7.8" width="18" height="12.2" rx="2.3"/><path d="M21 12h-5a2 2 0 0 0 0 4h5"/><circle cx="16.3" cy="14" r=".55"/>',
     target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
-    calendar:'<rect x="3.5" y="5" width="17" height="16" rx="2"/><path d="M7 3v4m10-4v4M4 10h16"/>',
     plus:'<path d="M12 5v14M5 12h14"/>',
     chevron:'<path d="m6 9 6 6 6-6"/>',right:'<path d="m9 6 6 6-6 6"/>',
     eye:'<path d="M2 12s3.6-6.4 10-6.4S22 12 22 12s-3.6 6.4-10 6.4S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/>',
     closed:'<path d="m3 3 18 18M10.4 5.8a12.2 12.2 0 0 1 1.6-.2c6.4 0 10 6.4 10 6.4a19 19 0 0 1-3.3 4M6.3 7.8A19 19 0 0 0 2 12s3.6 6.4 10 6.4c2.2 0 4.1-.7 5.6-1.7"/>',
-    pulse:'<path d="M3 3v17h18M6 14l5-5 4 3 6-7"/>',
-    pie:'<path d="M10.5 3.5A8.6 8.6 0 1 0 20.5 13H10.5Z"/><path d="M14 2.5v7h7a8.3 8.3 0 0 0-7-7Z"/>',
     up:'<path d="m4 16 6-6 4 3 6-8m-6 0h6v6"/>',
     down:'<path d="m4 8 6 6 4-3 6 8m-6 0h6v-6"/>',
     bank:'<path d="m3 8 9-5 9 5-1 .7H4ZM4 20h16M6 11v6m6-6v6m6-6v6M3 22h18"/>',
@@ -23,9 +20,9 @@
   const tag = key => '<i data-icon="' + key + '">' + symbol(key) + '</i>';
   document.querySelectorAll('[data-icon]').forEach(el => el.innerHTML = symbol(el.dataset.icon));
   const types = {
-    '投资资产':{color:'#c9b184',icon:'bars'}, '固定资产':{color:'#8d9f9a',icon:'house'},
-    '现金存款':{color:'#8393a6',icon:'bank'}, '其他资产':{color:'#9d8c81',icon:'gem'},
-    '负债':{color:'#a3938b',icon:'wallet'}
+    '投资资产':{color:'#323232',icon:'bars'}, '固定资产':{color:'#727272',icon:'house'},
+    '现金存款':{color:'#a1a1a1',icon:'bank'}, '其他资产':{color:'#cacaca',icon:'gem'},
+    '负债':{color:'#5a5a5a',icon:'wallet'}
   };
   const seed = {
     accounts:[
@@ -84,7 +81,7 @@
       .sort(([a],[b]) => sums[b]-sums[a]);
     byId('classCount').textContent=items.length;
     const ring = byId('allocationDonut');
-    ring.innerHTML = '<circle cx="90" cy="90" r="66" fill="none" stroke="#303132" stroke-width="19"/><circle cx="90" cy="90" r="51" fill="none" stroke="#383936" stroke-width=".7"/>';
+    ring.innerHTML = '<circle cx="90" cy="90" r="66" fill="none" stroke="#ededed" stroke-width="15"/>';
     const circumference = Math.PI*132;
     let offset = 0;
     const legend = byId('allocationLegend');
@@ -93,8 +90,8 @@
       const share = sums[name] / gross;
       const arc = circumference*share;
       const segment = document.createElementNS('http://www.w3.org/2000/svg','circle');
-      const gap = items.length>1 ? Math.min(3.8,arc*.3) : 0;
-      for(const [k,v] of Object.entries({cx:90,cy:90,r:66,fill:'none',stroke:color,'stroke-width':19,'stroke-dasharray':(arc-gap)+' '+(circumference-arc+gap),'stroke-dashoffset':-offset,transform:'rotate(-90 90 90)'})) segment.setAttribute(k,v);
+      const gap = items.length>1 ? Math.min(4.2,arc*.3) : 0;
+      for(const [k,v] of Object.entries({cx:90,cy:90,r:66,fill:'none',stroke:color,'stroke-width':15,'stroke-dasharray':(arc-gap)+' '+(circumference-arc+gap),'stroke-dashoffset':-offset,transform:'rotate(-90 90 90)'})) segment.setAttribute(k,v);
       ring.append(segment);
       offset+=arc;
       const row=document.createElement('div');
@@ -135,7 +132,8 @@
     const debt=sums['负债']/100;
     const net=gross-debt;
     const [whole,decimal]=mono.money(net).split('.');
-    byId('netValue').innerHTML='<span class="unit">¥</span><span>'+whole+'</span>'+(decimal?'<span class="decimals">.'+decimal+'</span>':'');
+    byId('netValue').classList.toggle('long-balance',whole.length>11);
+    byId('netValue').innerHTML='<span class="unit">¥</span><span class="balance-amount">'+whole+(decimal?'<span class="decimals">.'+decimal+'</span>':'')+'</span>';
     byId('grossValue').textContent='¥ '+mono.money(gross);
     byId('debtValue').textContent='¥ '+mono.money(debt);
     const date=mono.personal?today():'2026-11-21';
@@ -168,6 +166,9 @@
     byId('menuPrivacy').innerHTML=tag(mono.hidden?'closed':'eye')+'<span>'+action+'</span>';
     byId('overview').hidden=page!=='overview';
     byId('secondary').hidden=page==='overview';
+    const addLabel = { overview:'添加资产', accounts:'添加账户', goals:'添加目标' }[page];
+    byId('dockAdd').setAttribute('aria-label',addLabel);
+    byId('dockAdd').title=addLabel;
     document.querySelectorAll('[data-page]').forEach(link=>{
       if(link.dataset.page===page) link.setAttribute('aria-current','page');
       else link.removeAttribute('aria-current');
@@ -187,6 +188,10 @@
   document.addEventListener('click',e=>{if(!e.target.closest('.profile-wrap')) closeMenu()});
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!byId('profileMenu').hidden){closeMenu();byId('profileBtn').focus()}});
   byId('addAsset').onclick=()=>window.MonoPanels.editAccount();
+  byId('dockAdd').onclick=()=>{
+    if(route()==='goals') window.MonoPanels.editGoal();
+    else window.MonoPanels.editAccount();
+  };
   byId('startPersonal').onclick=()=>{closeMenu();byId('startDialog').showModal()};
   byId('cancelStart').onclick=()=>byId('startDialog').close();
   byId('confirmStart').onclick=()=>{
