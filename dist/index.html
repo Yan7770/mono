@@ -22,7 +22,7 @@
       <a href="#goals" data-page="goals"><i data-icon="target"></i>财富目标</a>
     </nav>
     <div class="profile-wrap"><button class="profile" id="profileBtn" aria-expanded="false" aria-controls="profileMenu"><span class="avatar">M</span><span class="profile-label">个人空间</span><i data-icon="chevron"></i></button>
-      <div class="profile-menu" id="profileMenu" hidden><strong>个人空间</strong><p>数据保存在当前浏览器</p><button id="menuPrivacy"><i data-icon="eye"></i><span>隐藏金额</span></button></div>
+      <div class="profile-menu" id="profileMenu" hidden><strong>个人空间</strong><p>数据保存在当前浏览器</p><button id="menuPrivacy"><i data-icon="eye"></i><span>隐藏金额</span></button><button id="startPersonal"><i data-icon="wallet"></i>启用我的资产空间</button></div>
     </div>
   </div></header>
   <main>
@@ -64,5 +64,6 @@
     <div id="secondary" hidden></div>
   </main>
   <footer><span>MONO <b>/</b> PRIVATE WEALTH</span><span id="dataNote">示例数据 · 本地保存</span></footer>
+  <dialog class="start-dialog" id="startDialog" aria-labelledby="startTitle"><h2 id="startTitle">启用我的资产空间</h2><p>从空白账户和目标开始，按天保存自己的净资产记录。此操作将替换当前示例和对示例的修改。</p><div><button id="cancelStart" autofocus>取消</button><button class="primary" id="confirmStart">从空白开始</button></div></dialog>
 </body>
 </html>

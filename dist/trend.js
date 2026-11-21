@@ -38,8 +38,51 @@
 
   const demoBalances = buildHistory().map(factor => demoNet * factor);
   const spanFor = period => spans[period] || spans["1Y"];
-  window.trendChange = (period, net = demoNet) =>
-    Math.round((net - demoBalances[730 - spanFor(period)]) * 100) / 100;
+
+  function timeline(period, net, snapshots, date) {
+    const live = Array.isArray(snapshots);
+    const today = new Date();
+    const localToday = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+    const asOf = Date.parse(date);
+    const end = Number.isFinite(asOf) ? Math.floor(asOf / day) * day
+      : live ? localToday : Date.UTC(2026, 10, 21);
+    if (!live) {
+      const span = spanFor(period);
+      const points = demoBalances.slice(-span - 1).map((value, offset) => ({ value, offset }));
+      points[span].value = Number.isFinite(net) ? net : demoNet;
+      return { start: end - span * day, span, points };
+    }
+
+    const daily = new Map();
+    for (const entry of snapshots) {
+      if (!entry || !/^\d{4}-\d{2}-\d{2}$/.test(entry.date)) continue;
+      const stamp = Date.parse(entry.date);
+      if (stamp <= end && Number.isFinite(entry.net)) daily.set(stamp, entry.net);
+    }
+    const dates = Array.from(daily.keys()).sort((a, b) => a - b);
+    if (!dates.length) return { points: [] };
+    const latest = Number.isFinite(net) ? net : daily.get(dates[dates.length - 1]);
+    if (dates.length === 1) return { start: dates[0], span: 0, points: [{ offset: 0, value: latest }] };
+
+    const cutoff = period === "ALL" ? dates[0] : end - spanFor(period) * day;
+    const visible = dates.filter(stamp => stamp >= cutoff);
+    const start = Math.max(dates[0], cutoff);
+    const span = (end - start) / day;
+    const points = visible.map(stamp => ({ offset: (stamp - start) / day, value: daily.get(stamp) }));
+    if (!points.length || points[0].offset > 0) {
+      const previous = dates.filter(stamp => stamp < start).pop();
+      points.unshift({ offset: 0, value: daily.get(previous) });
+    }
+    const last = points[points.length - 1];
+    if (last.offset === span) last.value = latest;
+    else points.push({ offset: span, value: latest });
+    return { start, span, points };
+  }
+
+  window.trendChange = (period, net, snapshots, date) => {
+    const { points } = timeline(period, net, snapshots, date);
+    return points.length ? Math.round((points[points.length - 1].value - points[0].value) * 100) / 100 : 0;
+  };
 
   function axisFor(min, max) {
     const rough = (max - min || Math.max(Math.abs(max) * .1, 30000)) / 3;
@@ -66,27 +109,30 @@
   function paint(plot, options) {
     const width = Math.max(180, plot.clientWidth || 640);
     const height = Math.max(104, plot.clientHeight || 198);
-    const { period = "1Y", hidden = false, date = "2026-11-21" } = options;
-    const net = Number.isFinite(Number(options.net)) ? Number(options.net) : demoNet;
-    const endDate = Date.parse(date);
-    const endTime = Number.isFinite(endDate) ? endDate : Date.UTC(2026, 10, 21);
-    const span = spanFor(period);
-    const values = demoBalances.slice(-span - 1);
-    values[span] = net;
-    const { low, high, step } = axisFor(Math.min(...values), Math.max(...values));
+    const { period = "1Y", hidden = false, snapshots, date } = options;
+    const { points, start, span } = timeline(period, options.net, snapshots, date);
+    if (!points.length) {
+      plot.innerHTML = '<div role="status" style="display:grid;place-items:center;min-height:116px;height:100%;font-size:14px;color:#aaa99f">记录资产后即可查看走势</div>';
+      return;
+    }
+    const net = points[points.length - 1].value;
+    const min = points.reduce((amount, point) => Math.min(amount, point.value), net);
+    const max = points.reduce((amount, point) => Math.max(amount, point.value), net);
+    const { low, high, step } = axisFor(min, max);
     const left = 2;
     const right = width - Math.max(44, axisLabel(high, step).length * 7.2 + 13);
     const top = 8;
     const bottom = height - 26;
-    const x = i => left + i / span * (right - left);
+    const x = i => span ? left + i / span * (right - left) : right;
     const y = value => bottom - (value - low) / (high - low) * (bottom - top);
-    const dateAt = i => new Date(endTime + (i - span) * day);
-    const xTicks = Math.min(width < 400 ? 4 : 7, Math.floor((right - left) / 49) + 1);
+    const dateAt = i => new Date(start + i * day);
+    const xTicks = Math.min(span + 1, width < 400 ? 4 : 7, Math.floor((right - left) / 49) + 1);
     const tickText = i => {
       const d = dateAt(i);
+      if (!span) return d.toISOString().slice(0, 10);
       if (span <= 91) return String(d.getUTCMonth() + 1).padStart(2, "0") +
         "." + String(d.getUTCDate()).padStart(2, "0");
-      if (span === 730) return String(d.getUTCFullYear()).slice(-2) + "." +
+      if (span > 365) return String(d.getUTCFullYear()).slice(-2) + "." +
         String(d.getUTCMonth() + 1).padStart(2, "0");
       return (d.getUTCMonth() + 1) + "月";
     };
@@ -98,12 +144,18 @@
       pieces.push(`<text x="${width - 1}" y="${level}" text-anchor="end" dominant-baseline="middle">${hidden ? "•••" : axisLabel(tick, step)}</text>`);
     }
     for (let k = 0; k < xTicks; k++) {
-      const i = Math.round(k / (xTicks - 1) * span);
-      const anchor = k === 0 ? "start" : k === xTicks - 1 ? "end" : "middle";
+      const i = xTicks === 1 ? 0 : Math.round(k / (xTicks - 1) * span);
+      const anchor = k === xTicks - 1 ? "end" : k === 0 ? "start" : "middle";
       pieces.push(`<text x="${x(i)}" y="${height - 3}" text-anchor="${anchor}">${tickText(i)}</text>`);
     }
-    const coords = values.map((value, i) => x(i).toFixed(2) + " " + y(value).toFixed(2));
-    const path = "M" + coords.join("L");
+    const path = points.map(({ value, offset }, i) => {
+      const px = x(offset).toFixed(2), py = y(value).toFixed(2);
+      if (i === 0) return "M" + px + " " + py;
+      return Array.isArray(snapshots) ? "H" + px + "V" + py : "L" + px + " " + py;
+    }).join("");
+    const seriesPaths = span ? `<path d="${path}L${right} ${bottom}L${left} ${bottom}Z" fill="url(#monoTrendFill)"/>
+        <path d="${path}" fill="none" stroke="#dabe80" stroke-width="1.8"
+          stroke-linejoin="round" stroke-linecap="round"/>` : "";
     const endY = y(net).toFixed(2);
     plot.style.position = "relative";
     plot.innerHTML = `<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}"
@@ -115,9 +167,7 @@
         </linearGradient></defs>
         <g fill="#93958d" font-family="'IBM Plex Mono',Consolas,'Microsoft YaHei',monospace"
           font-size="11">${pieces.join("")}</g>
-        <path d="${path}L${right} ${bottom}L${left} ${bottom}Z" fill="url(#monoTrendFill)"/>
-        <path d="${path}" fill="none" stroke="#dabe80" stroke-width="1.8"
-          stroke-linejoin="round" stroke-linecap="round"/>
+        ${seriesPaths}
         <circle cx="${right}" cy="${endY}" r="6" fill="#dabe80" opacity=".13"/>
         <circle cx="${right}" cy="${endY}" r="3.15" fill="#e3c991"/>
         <g data-cursor visibility="hidden" pointer-events="none">
@@ -135,7 +185,8 @@
     let index = span;
     function show(i) {
       index = Math.max(0, Math.min(span, i));
-      const px = x(index), py = y(values[index]);
+      const value = points.findLast(point => point.offset <= index).value;
+      const px = x(index), py = y(value);
       const [line, circle] = cursor.children;
       line.setAttribute("x1", px);
       line.setAttribute("x2", px);
@@ -143,7 +194,7 @@
       circle.setAttribute("cy", py);
       cursor.setAttribute("visibility", "visible");
       tooltip.innerHTML = `<span style="color:#a6a79e">${dateAt(index).toISOString().slice(0, 10)}</span><br>
-        <strong>${hidden ? "••••••" : "¥ " + money.format(values[index])}</strong>`;
+        <strong>${hidden ? "••••••" : "¥ " + money.format(value)}</strong>`;
       tooltip.hidden = false;
       const tipWidth = tooltip.offsetWidth;
       tooltip.style.left = Math.max(0, Math.min(width - tipWidth, px + tipWidth + 12 < right ? px + 12 : px - tipWidth - 12)) + "px";

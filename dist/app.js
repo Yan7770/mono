@@ -48,17 +48,31 @@
     return seed;
   }
   const state = readState();
+  const today = () => {
+    const d = new Date();
+    return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
+  };
   const format = new Intl.NumberFormat('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});
   let writeFailed = false;
   let period = '1Y';
   const mono = window.mono = {
     accounts:state.accounts, goals:state.goals, hidden:!!state.hidden, edited:!!state.edited,
+    personal:!!state.personal,snapshots:state.snapshots||[],
     money(value) {return this.hidden ? '••••••' : format.format(value)},
-    save() {this.edited = true; persist(); render()}
+    save() {
+      this.edited = true;
+      if(this.personal && (this.accounts.length || this.snapshots.length)){
+        const date=today();
+        const net=this.accounts.reduce((sum,a)=>sum+(a.type==='负债'?-1:1)*Math.round(a.balance*100),0)/100;
+        const previous=this.snapshots.find(s=>s.date===date);
+        if(previous) previous.net=net; else this.snapshots.push({date,net});
+      }
+      persist(); render();
+    }
   };
   function persist() {
-    const {accounts,goals,hidden,edited} = mono;
-    try {localStorage.setItem(key,JSON.stringify({accounts,goals,hidden,edited})); writeFailed=false}
+    const {accounts,goals,hidden,edited,personal,snapshots} = mono;
+    try {localStorage.setItem(key,JSON.stringify({accounts,goals,hidden,edited,personal,snapshots})); writeFailed=false}
     catch {writeFailed=true}
   }
   function route() {
@@ -124,7 +138,13 @@
     byId('netValue').innerHTML='<span class="unit">¥</span><span>'+whole+'</span>'+(decimal?'<span class="decimals">.'+decimal+'</span>':'');
     byId('grossValue').textContent='¥ '+mono.money(gross);
     byId('debtValue').textContent='¥ '+mono.money(debt);
-    const change=window.trendChange(period,net);
+    const date=mono.personal?today():'2026-11-21';
+    const snapshots=mono.personal?mono.snapshots:undefined;
+    const dateEl=document.querySelector('.date time');
+    dateEl.dateTime=date;
+    const [year,month,day]=date.split('-');
+    dateEl.textContent=year+'年'+Number(month)+'月'+Number(day)+'日';
+    const change=window.trendChange(period,net,snapshots,date);
     const start=net-change;
     const pct=start ? (Math.abs(change/start)*100).toFixed(2)+'%' : '—';
     byId('changeValue').textContent=mono.hidden?'••••••':(change>=0?'+':'−')+mono.money(Math.abs(change));
@@ -132,7 +152,8 @@
     const names={'1M':'近一个月','3M':'近三个月','6M':'近六个月','1Y':'近一年',ALL:'全部期间'};
     byId('periodCaption').textContent=names[period]+(change>=0?'净资产增长':'净资产减少');
     document.querySelectorAll('[data-range]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.range===period)));
-    window.renderTrend({period,net,hidden:mono.hidden});
+    if(mono.personal && mono.snapshots.length<2) byId('periodCaption').textContent=mono.snapshots.length?'首日净资产记录':'暂无净资产记录';
+    window.renderTrend({period,net,hidden:mono.hidden,date,snapshots});
     for (const t of Object.keys(sums)) sums[t]/=100;
     allocation(sums,gross);
     accountRows(gross);
@@ -152,7 +173,8 @@
       else link.removeAttribute('aria-current');
     });
     if(page==='overview') overview(); else window.MonoPanels.render(page);
-    byId('dataNote').textContent=writeFailed?'浏览器存储不可用 · 更改仅在本次访问有效':mono.edited?'历史走势含示例数据 · 本地保存':'示例数据 · 本地保存';
+    byId('startPersonal').hidden=mono.personal;
+    byId('dataNote').textContent=writeFailed?'浏览器存储不可用 · 更改仅在本次访问有效':mono.personal?'个人数据 · 本地保存':mono.edited?'历史走势含示例数据 · 本地保存':'示例数据 · 本地保存';
   }
   function closeMenu(){byId('profileMenu').hidden=true;byId('profileBtn').setAttribute('aria-expanded','false')}
   function privacy(){mono.hidden=!mono.hidden;persist();closeMenu();render()}
@@ -165,12 +187,18 @@
   document.addEventListener('click',e=>{if(!e.target.closest('.profile-wrap')) closeMenu()});
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!byId('profileMenu').hidden){closeMenu();byId('profileBtn').focus()}});
   byId('addAsset').onclick=()=>window.MonoPanels.editAccount();
+  byId('startPersonal').onclick=()=>{closeMenu();byId('startDialog').showModal()};
+  byId('cancelStart').onclick=()=>byId('startDialog').close();
+  byId('confirmStart').onclick=()=>{
+    Object.assign(mono,{accounts:[],goals:[],snapshots:[],personal:true,edited:false});
+    byId('startDialog').close();persist();location.hash='overview';render();
+  };
   document.querySelectorAll('[data-range]').forEach(b=>b.onclick=()=>{period=b.dataset.range;overview()});
   window.addEventListener('hashchange',()=>{closeMenu();render();window.scrollTo(0,0)});
   window.addEventListener('storage',e=>{
     if(e.key!==key)return;
     const fresh=readState();
-    Object.assign(mono,{accounts:fresh.accounts,goals:fresh.goals,hidden:!!fresh.hidden,edited:!!fresh.edited});
+    Object.assign(mono,{accounts:fresh.accounts,goals:fresh.goals,hidden:!!fresh.hidden,edited:!!fresh.edited,personal:!!fresh.personal,snapshots:fresh.snapshots||[]});
     document.querySelector('dialog[open]')?.close();
     render();
   });
