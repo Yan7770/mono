@@ -4,6 +4,7 @@
   const types = ['现金存款', '投资资产', '固定资产', '其他资产', '负债'];
   const iconPaths = {
     plus: '<path d="M12 5v14M5 12h14"/>',
+    update: '<path d="M19.5 12A7.5 7.5 0 1 1 17 6.4l2.5 2.6M19.5 4.4V9h-4.6"/>',
     edit: '<path d="m14.5 5.5 4 4M4 20l4.5-1 12-12a1.6 1.6 0 0 0 0-2.3l-1.2-1.2a1.6 1.6 0 0 0-2.3 0l-12 12Z"/>',
     close: '<path d="m6 6 12 12M18 6 6 18"/>',
     goal: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.8"/><circle cx="12" cy="12" r="1.2"/>',
@@ -53,6 +54,142 @@
   };
   const blank = (text) => el('p', 'mp-empty', text);
 
+  function openDialog(dialog, focusFallback) {
+    const opener = document.activeElement;
+    const viewport = window.visualViewport;
+    function fitSheet() {
+      dialog.style.setProperty('--mp-viewport-height', viewport.height + 'px');
+      const bottom = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+      dialog.style.setProperty('--mp-viewport-bottom', bottom + 'px');
+    }
+    dialog.addEventListener('close', () => {
+      viewport?.removeEventListener('resize', fitSheet);
+      viewport?.removeEventListener('scroll', fitSheet);
+      dialog.remove();
+      if (opener?.isConnected && typeof opener.focus === 'function') opener.focus();
+      else (focusFallback?.() || document.getElementById('dockAdd'))?.focus();
+    }, {once: true});
+    document.body.append(dialog);
+    dialog.showModal();
+    if (viewport) {
+      fitSheet();
+      viewport.addEventListener('resize', fitSheet);
+      viewport.addEventListener('scroll', fitSheet);
+    }
+  }
+
+  const balanceDate = new Intl.DateTimeFormat('zh-CN', {year: 'numeric', month: '2-digit', day: '2-digit'});
+  const maxBalance = 99999999999.99;
+  const signedAmount = value => window.mono.hidden ? amount(value)
+    : (value > 0 ? '+' : value < 0 ? '−' : '') + amount(Math.abs(value));
+
+  function batchBalances() {
+    if (document.querySelector('dialog[open]') || !window.mono.accounts.length) return;
+    const dialog = el('dialog', 'mp-dialog mp-batch-dialog');
+    dialog.setAttribute('aria-labelledby', 'mp-batch-title');
+    dialog.setAttribute('aria-describedby', 'mp-batch-intro');
+    const title = el('h2', '', '更新余额');
+    title.id = 'mp-batch-title';
+    const close = button('', 'mp-close', () => dialog.close(), 'close');
+    close.setAttribute('aria-label', '关闭');
+    close.autofocus = true;
+    const head = el('div', 'mp-dialog-head');
+    head.append(title, close);
+    const intro = el('p', 'mp-batch-intro', '只填写有变化的账户，留空保留原余额。');
+    intro.id = 'mp-batch-intro';
+    const fields = el('div', 'mp-batch-fields');
+    const rows = window.mono.accounts.map(account => {
+      const row = el('label', 'mp-field mp-batch-row');
+      const label = el('span', 'mp-batch-label');
+      const meta = el('span', 'mp-meta');
+      const date = Date.parse(account.updatedAt);
+      meta.append(
+        el('span', '', '当前 ' + amount(account.balance)),
+        el('span', '', Number.isFinite(date) ? '更新于 ' + balanceDate.format(date) : '更新时间未记录')
+      );
+      label.append(el('strong', '', account.name), meta);
+      const input = el('input');
+      input.type = 'text';
+      input.inputMode = 'decimal';
+      input.autocomplete = 'off';
+      input.maxLength = 20;
+      input.placeholder = '新余额';
+      input.setAttribute('aria-label', account.name + '的新余额（元）');
+      meta.id = 'mp-batch-info-' + fields.children.length;
+      input.setAttribute('aria-describedby', meta.id);
+      row.append(label, input);
+      fields.append(row);
+      return {account, input};
+    });
+
+    const preview = el('div', 'mp-batch-preview');
+    const net = el('output', 'mp-batch-delta');
+    preview.append(el('span', '', '本次净资产变化'), net);
+    const feedback = el('p', 'mp-feedback');
+    feedback.setAttribute('role', 'alert');
+    const submit = el('button', 'mp-primary', '保存更新');
+    submit.type = 'submit';
+    const actions = el('div', 'mp-actions');
+    actions.append(button('取消', 'mp-secondary', () => dialog.close()), submit);
+    const footer = el('div', 'mp-batch-footer');
+    footer.append(preview, feedback, actions);
+    const form = el('form', 'mp-batch-form');
+    form.append(fields, footer);
+    dialog.append(head, intro, form);
+
+    function collect() {
+      const changes = [];
+      let invalid;
+      let deltaCents = 0;
+      for (const {account, input} of rows) {
+        const value = input.value.normalize('NFKC').trim();
+        if (!value) continue;
+        const plain = /^\d*\.?\d{0,2}$/.test(value);
+        const grouped = /^\d{1,3}(?:,\d{3})+(?:\.\d{0,2})?$/.test(value);
+        const balance = Number(value.replaceAll(',', ''));
+        if ((!plain && !grouped) || !Number.isFinite(balance) || balance > maxBalance) {
+          invalid ||= input;
+          continue;
+        }
+        const cents = Math.round(balance * 100);
+        const difference = cents - Math.round(account.balance * 100);
+        if (!difference) continue;
+        changes.push({id: account.id, balance: cents / 100});
+        deltaCents += account.type === '负债' ? -difference : difference;
+      }
+      return {changes, invalid, delta: deltaCents / 100};
+    }
+
+    function refreshPreview() {
+      const {changes, invalid, delta} = collect();
+      net.textContent = invalid ? '—' : signedAmount(delta);
+      submit.disabled = !changes.length && !invalid;
+    }
+
+    form.addEventListener('input', event => {
+      event.target.removeAttribute('aria-invalid');
+      feedback.textContent = '';
+      refreshPreview();
+    });
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      const {changes, invalid} = collect();
+      if (invalid) {
+        invalid.setAttribute('aria-invalid', 'true');
+        feedback.textContent = '请输入 0 至 99,999,999,999.99 元，最多保留两位小数。';
+        invalid.focus();
+        return;
+      }
+      if (!changes.length) return;
+      const result = window.mono.updateBalances(changes);
+      if (result.ok) dialog.close();
+      else feedback.textContent = result.message || '余额未保存，请重试。';
+    });
+
+    refreshPreview();
+    openDialog(dialog, () => document.querySelector('.mp-update-balances'));
+  }
+
   function accounts(root) {
     const items = window.mono.accounts;
     const total = sum(items.filter(a => a.type !== '负债'), 'balance');
@@ -94,7 +231,23 @@
     paint();
     bar.append(title, filter);
     panel.append(bar, list);
-    root.append(metrics, panel);
+    root.append(metrics);
+    if (window.mono.canUndoBalanceUpdate()) {
+      const notice = el('div', 'mp-batch-notice');
+      const status = el('p', '', '余额已更新');
+      status.setAttribute('role', 'status');
+      notice.append(status, button('撤销更新', 'mp-secondary', () => {
+        const result = window.mono.undoBalanceUpdate();
+        if (result.ok) {
+          document.querySelector('.mp-update-balances')?.focus();
+          const restored = el('p', 'mp-batch-undo-message', '已撤销本次余额更新');
+          restored.setAttribute('role', 'status');
+          document.querySelector('#secondary .mp-metrics')?.after(restored);
+        } else status.textContent = result.message || '撤销未完成，请重试。';
+      }));
+      root.append(notice);
+    }
+    root.append(panel);
   }
 
   function goals(root) {
@@ -140,7 +293,12 @@
     headingText.append(el('h1', '', isAccount ? '资产账户' : '财富目标'));
     const add = button(isAccount ? '添加账户' : '添加目标', 'mp-primary mp-page-add',
       () => isAccount ? editAccount() : editGoal(), 'plus');
-    heading.append(headingText, add);
+    const controls = el('div', 'mp-heading-actions');
+    if (isAccount && window.mono.accounts.length) {
+      controls.append(button('更新余额', 'mp-secondary mp-update-balances', batchBalances, 'update'));
+    }
+    controls.append(add);
+    heading.append(headingText, controls);
     wrap.append(heading);
     if (isAccount) accounts(wrap); else goals(wrap);
     root.replaceChildren(wrap);
@@ -258,32 +416,10 @@
       window.mono.save();
     });
     dialog.append(head, form);
-    const opener = document.activeElement;
-    const viewport = window.visualViewport;
-    function fitSheet() {
-      dialog.style.setProperty('--mp-viewport-height', viewport.height + 'px');
-      const bottom = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
-      dialog.style.setProperty('--mp-viewport-bottom', bottom + 'px');
-    }
-    dialog.addEventListener('close', () => {
-      viewport?.removeEventListener('resize', fitSheet);
-      viewport?.removeEventListener('scroll', fitSheet);
-      dialog.remove();
-      if (opener?.isConnected && typeof opener.focus === 'function') opener.focus();
-      else {
-        const add = document.querySelector('.mp-page-add');
-        const dock = document.getElementById('dockAdd');
-        if (add?.getClientRects().length) add.focus();
-        else dock?.focus();
-      }
-    }, {once: true});
-    document.body.append(dialog);
-    dialog.showModal();
-    if (viewport) {
-      fitSheet();
-      viewport.addEventListener('resize', fitSheet);
-      viewport.addEventListener('scroll', fitSheet);
-    }
+    openDialog(dialog, () => {
+      const add = document.querySelector('.mp-page-add');
+      return add?.getClientRects().length ? add : null;
+    });
     if (!touchLayout) inputs.name.focus();
   }
   const editAccount = id => editor('account', id);

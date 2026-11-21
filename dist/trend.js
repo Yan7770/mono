@@ -57,31 +57,44 @@
     for (const entry of snapshots) {
       if (!entry || !/^\d{4}-\d{2}-\d{2}$/.test(entry.date)) continue;
       const stamp = Date.parse(entry.date);
-      if (stamp <= end && Number.isFinite(entry.net)) daily.set(stamp, entry.net);
+      if (stamp <= end && Number.isFinite(entry.net)) daily.set(stamp, entry);
     }
     const dates = Array.from(daily.keys()).sort((a, b) => a - b);
     if (!dates.length) return { points: [] };
-    const latest = Number.isFinite(net) ? net : daily.get(dates[dates.length - 1]);
-    if (dates.length === 1) return { start: dates[0], span: 0, points: [{ offset: 0, value: latest }] };
-
     const cutoff = period === "ALL" ? dates[0] : end - spanFor(period) * day;
+    const latest = Number.isFinite(net) ? net : daily.get(dates[dates.length - 1]).net;
+    if (dates.length === 1) {
+      const entry = daily.get(dates[0]);
+      const opening = dates[0] >= cutoff ? entry.opening : undefined;
+      const baseline = opening ? { ...opening, date: entry.date } : entry;
+      return { start: dates[0], span: 0, points: [{ offset: 0, value: latest }], baseline };
+    }
+
     const visible = dates.filter(stamp => stamp >= cutoff);
     const start = Math.max(dates[0], cutoff);
     const span = (end - start) / day;
-    const points = visible.map(stamp => ({ offset: (stamp - start) / day, value: daily.get(stamp) }));
+    const points = visible.map(stamp => ({ offset: (stamp - start) / day, value: daily.get(stamp).net }));
+    let baseline = daily.get(start);
     if (!points.length || points[0].offset > 0) {
       const previous = dates.filter(stamp => stamp < start).pop();
-      points.unshift({ offset: 0, value: daily.get(previous) });
+      baseline = daily.get(previous);
+      points.unshift({ offset: 0, value: baseline.net });
+    } else if (start === dates[0] && baseline.opening) {
+      baseline = { ...baseline.opening, date: baseline.date };
+      points.unshift({ offset: 0, value: baseline.net });
     }
     const last = points[points.length - 1];
     if (last.offset === span) last.value = latest;
     else points.push({ offset: span, value: latest });
-    return { start, span, points };
+    return { start, span, points, baseline };
   }
 
-  window.trendChange = (period, net, snapshots, date) => {
-    const { points } = timeline(period, net, snapshots, date);
-    return points.length ? Math.round((points[points.length - 1].value - points[0].value) * 100) / 100 : 0;
+  window.trendComparison = (period, net, snapshots, date) => {
+    const { points, start, baseline } = timeline(period, net, snapshots, date);
+    if (!points.length) return { change: 0 };
+    const startValue = baseline?.net ?? points[0].value;
+    const change = Math.round(points[points.length - 1].value * 100) - Math.round(startValue * 100);
+    return { change: change / 100, startValue, startDate: new Date(start).toISOString().slice(0, 10), baseline };
   };
 
   function axisFor(min, max) {

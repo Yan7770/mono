@@ -1,0 +1,67 @@
+@media (max-width: 700px) {
+  .mainnav {
+    --dock-tab-size: 52px;
+    --dock-gap: 8px;
+    --dock-inset: 4px;
+    isolation: isolate;
+    width: max-content;
+    max-width: none;
+    bottom: max(12px, calc(env(safe-area-inset-bottom) + var(--dock-inset)));
+    grid-template-columns: repeat(3, var(--dock-tab-size))
+      calc(var(--dock-tab-size) + var(--dock-gap) + var(--dock-inset));
+    gap: 0;
+    padding: 0 0 0 var(--dock-inset);
+    border: 0;
+    background: none;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    pointer-events: none;
+  }
+
+  .mainnav::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: calc(-1 * var(--dock-inset)) calc(var(--dock-tab-size) + var(--dock-gap)) calc(-1 * var(--dock-inset)) 0;
+    border: 1px solid var(--line);
+    border-radius: 100px;
+    background: var(--dock-background);
+    box-shadow: var(--shadow-floating);
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+  }
+
+  .mainnav a,
+  .mainnav .dock-add {
+    width: var(--dock-tab-size);
+    height: var(--dock-tab-size);
+    min-height: var(--dock-tab-size);
+    padding: 0;
+    pointer-events: auto;
+  }
+
+  .mainnav a .nav-label {
+    display: none;
+  }
+
+  .mainnav a[aria-current="page"] {
+    background: var(--selected);
+    color: var(--ink);
+  }
+
+  .mainnav a i svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .mainnav .dock-add {
+    justify-self: end;
+    box-shadow: var(--shadow-floating);
+  }
+
+  .mainnav .dock-add svg {
+    width: 24px;
+    height: 24px;
+  }
+}

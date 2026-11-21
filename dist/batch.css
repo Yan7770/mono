@@ -1,0 +1,100 @@
+.mp-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mp-update-balances .mp-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.mp-batch-notice,
+.mp-batch-undo-message {
+  min-height: 56px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px 6px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--soft);
+  font-size: .9rem;
+}
+
+.mp-batch-notice button { background: var(--surface); }
+.mp-batch-notice button:hover { background: var(--hover); }
+
+.mp-batch-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.mp-batch-dialog .mp-dialog-head {
+  flex: none;
+  margin-bottom: 6px;
+}
+
+.mp-batch-dialog .mp-batch-intro {
+  color: var(--muted);
+  flex: none;
+  font-size: .9rem;
+  line-height: 1.6;
+  margin-bottom: 13px;
+}
+
+.mp-batch-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.mp-batch-fields {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-block: 1px solid var(--line);
+  padding-inline: 4px;
+  margin-inline: -4px;
+}
+
+.mp-batch-row {
+  grid-template-columns: minmax(0, 1fr) minmax(92px, .75fr);
+  align-items: center;
+  gap: 12px;
+  padding-block: 11px;
+}
+
+.mp-batch-row + .mp-batch-row { border-top: 1px solid var(--line); }
+.mp-batch-label { min-width: 0; overflow-wrap: anywhere; }
+.mp-batch-label strong { font-size: .9375rem; font-weight: 500; }
+.mp-batch-label .mp-meta { display: grid; gap: 1px; margin-top: 4px; }
+.mp-batch-row input { min-width: 0; text-align: end; padding-inline: 10px; }
+.mp-batch-row input[aria-invalid="true"] { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+.mp-batch-footer {
+  flex: none;
+  padding-top: 13px;
+}
+
+.mp-batch-preview {
+  min-height: 44px;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  background: var(--soft);
+}
+
+.mp-batch-preview > span { color: var(--muted); font-size: .875rem; }
+.mp-batch-delta { color: var(--ink); font-weight: 520; overflow-wrap: anywhere; }
+.mp-batch-footer .mp-actions { margin-top: 12px; }
+.mp-batch-footer button:disabled { cursor: default; opacity: .45; }
+
+@media (min-width: 701px) {
+  .mp-batch-dialog { width: min(540px, calc(100% - 32px)); }
+}

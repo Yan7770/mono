@@ -1,0 +1,31 @@
+.performance.change-button {
+  max-width: 100%;
+  min-height: 44px;
+  margin: 3px -6px 0;
+  padding: 4px 6px;
+  text-align: left;
+  border-radius: 12px;
+}
+.change-button:active { background: var(--soft); }
+.change-button > i { color: var(--muted); }
+.change-button > i svg { width: 15px; height: 15px; }
+.change-button[aria-expanded="true"] > i { transform: rotate(180deg); }
+.change-details { margin-top: 15px; padding-top: 14px; border-top: 1px solid var(--line); }
+.change-list { margin: 5px 0 8px; padding: 0; }
+.change-list > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  font-size: .875rem;
+}
+.change-list > div + div { border-top: 1px solid var(--line); }
+.change-list dt { overflow-wrap: anywhere; }
+.change-list small { display: block; margin-top: 3px; color: var(--muted); font-size: .75rem; }
+.change-list dd { margin: 0; font-weight: 500; text-align: right; overflow-wrap: anywhere; }
+.change-note { color: var(--muted); font-size: .82rem; line-height: 1.55; }
+#startError:empty { display: none; }
+@media (hover: hover) {
+  .change-button:hover { background: var(--soft); }
+}

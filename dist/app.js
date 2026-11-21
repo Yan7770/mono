@@ -6,6 +6,8 @@
     wallet:'<path d="M4 7.5 16.5 4a2 2 0 0 1 2.5 1.8V8"/><rect x="3" y="7.8" width="18" height="12.2" rx="2.3"/><path d="M21 12h-5a2 2 0 0 0 0 4h5"/><circle cx="16.3" cy="14" r=".55"/>',
     target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
     plus:'<path d="M12 5v14M5 12h14"/>',
+    download:'<path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/>',
+    upload:'<path d="M12 16V4m-4 4 4-4 4 4M4 16v4h16v-4"/>',
     moon:'<path d="M20.3 15.2a8.5 8.5 0 0 1-11.5-11.5A8.6 8.6 0 1 0 20.3 15.2Z"/>',
     chevron:'<path d="m6 9 6 6 6-6"/>',right:'<path d="m9 6 6 6-6 6"/>',
     eye:'<path d="M2 12s3.6-6.4 10-6.4S22 12 22 12s-3.6 6.4-10 6.4S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/>',
@@ -38,40 +40,147 @@
     hidden:false,edited:false
   };
   const key = 'mono.private-wealth.v1';
+  const demoDate = '2026-11-21';
+  const maxBalance = 99999999999.99;
+  const copy = value => JSON.parse(JSON.stringify(value));
+  let storedText = null;
   function readState() {
     try {
-      const stored = JSON.parse(localStorage.getItem(key));
-      if (Array.isArray(stored?.accounts) && Array.isArray(stored?.goals)) return stored;
+      storedText = localStorage.getItem(key);
+      const stored = JSON.parse(storedText);
+      if (Array.isArray(stored?.accounts) && Array.isArray(stored?.goals)) {
+        return {
+          accounts: stored.accounts, goals: stored.goals, hidden: !!stored.hidden,
+          edited: !!stored.edited, personal: !!stored.personal,
+          snapshots: Array.isArray(stored.snapshots) ? stored.snapshots : []
+        };
+      }
     } catch {}
-    return seed;
+    return {...copy(seed), personal:false, snapshots:[]};
   }
-  const state = readState();
   const today = () => {
     const d = new Date();
     return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
   };
+  const cents = value => Math.round(value * 100);
+  const positionValue = position => (position.type === '负债' ? -1 : 1) * cents(position.balance);
+  const positions = accounts => accounts.map(({id,name,type,balance}) => ({id,name,type,balance}));
+  const netOf = accounts => accounts.reduce((total, account) => total + positionValue(account), 0) / 100;
   const format = new Intl.NumberFormat('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});
-  let writeFailed = false;
+  let storageMessage = '';
   let period = '1Y';
+  let undoState;
+  const state = readState();
+  let committedAccounts = copy(state.accounts);
   const mono = window.mono = {
-    accounts:state.accounts, goals:state.goals, hidden:!!state.hidden, edited:!!state.edited,
-    personal:!!state.personal,snapshots:state.snapshots||[],
+    ...state,
     money(value) {return this.hidden ? '••••••' : format.format(value)},
     save() {
-      this.edited = true;
-      if(this.personal && (this.accounts.length || this.snapshots.length)){
-        const date=today();
-        const net=this.accounts.reduce((sum,a)=>sum+(a.type==='负债'?-1:1)*Math.round(a.balance*100),0)/100;
-        const previous=this.snapshots.find(s=>s.date===date);
-        if(previous) previous.net=net; else this.snapshots.push({date,net});
+      const candidate = withAccountHistory(this.accounts);
+      const result = writeData(candidate);
+      undoState = undefined;
+      if (result.conflict) {
+        acceptData(readState());
+        storageMessage = result.message;
+      } else {
+        acceptData(candidate);
+        storageMessage = result.ok ? '' : '浏览器存储不可用 · 更改仅在本次访问有效';
       }
-      persist(); render();
+      render();
+    },
+    updateBalances(changes) {
+      const edits = new Map(changes.map(({id,balance}) => [String(id),balance]));
+      const existing = new Set(this.accounts.map(account => String(account.id)));
+      for (const [id,balance] of edits) {
+        if (!existing.has(id) || !Number.isFinite(balance) || balance < 0 ||
+            balance > maxBalance || Math.abs(balance - cents(balance) / 100) > 0.000001) {
+          return {ok:false, message:'账户或余额已失效，请重新打开更新表单。'};
+        }
+      }
+      const accounts = this.accounts.map(account => {
+        const balance = edits.get(String(account.id));
+        return balance === undefined || balance === account.balance ? account : {...account,balance};
+      });
+      if (accounts.every((account,index) => account === this.accounts[index])) {
+        return {ok:false, message:'请填写至少一个有变化的余额。'};
+      }
+      const previous = {accounts:copy(this.accounts), snapshots:this.snapshots, edited:this.edited};
+      const candidate = withAccountHistory(accounts);
+      const result = writeData(candidate);
+      if (result.ok) {
+        acceptData(candidate);
+        undoState = previous;
+        render();
+      }
+      return result;
+    },
+    canUndoBalanceUpdate() { return Boolean(undoState); },
+    undoBalanceUpdate() {
+      if (!undoState) return {ok:false, message:'本次更新已无法撤销。'};
+      const candidate = {...currentData(), ...undoState};
+      const result = writeData(candidate);
+      if (result.ok) {
+        undoState = undefined;
+        acceptData(candidate);
+        render();
+      }
+      return result;
+    },
+    exportBackup() {
+      return {format:'mono-backup',version:1,exportedAt:new Date().toISOString(),data:copy(currentData())};
+    },
+    restoreBackup(data) {
+      const result = writeData(data);
+      if (result.ok) {
+        undoState = undefined;
+        acceptData(data);
+        render();
+      }
+      return result;
     }
   };
-  function persist() {
+  function currentData() {
     const {accounts,goals,hidden,edited,personal,snapshots} = mono;
-    try {localStorage.setItem(key,JSON.stringify({accounts,goals,hidden,edited,personal,snapshots})); writeFailed=false}
-    catch {writeFailed=true}
+    return {accounts,goals,hidden,edited,personal,snapshots};
+  }
+  function acceptData(data) {
+    Object.assign(mono,data);
+    committedAccounts = copy(data.accounts);
+  }
+  function writeData(data) {
+    try {
+      if (localStorage.getItem(key) !== storedText) {
+        return {ok:false, conflict:true, message:'另一标签页已更新数据，请刷新页面后重试。'};
+      }
+      const serialized = JSON.stringify(data);
+      localStorage.setItem(key,serialized);
+      storedText = serialized;
+      storageMessage = '';
+      return {ok:true};
+    } catch {
+      return {ok:false, message:'浏览器无法保存这次更改，请检查可用存储空间后重试。'};
+    }
+  }
+  function withAccountHistory(accounts) {
+    const data = {...currentData(), accounts, edited:true};
+    const before = positions(committedAccounts);
+    const after = positions(accounts);
+    if (JSON.stringify(before) === JSON.stringify(after)) return data;
+
+    const oldById = new Map(committedAccounts.map(account => [String(account.id),account]));
+    const updatedAt = new Date().toISOString();
+    data.accounts = accounts.map(account => {
+      const previous = oldById.get(String(account.id));
+      return previous?.balance === account.balance ? account : {...account,updatedAt};
+    });
+    const date = data.personal ? today() : demoDate;
+    const previous = data.snapshots.find(snapshot => snapshot.date === date);
+    const snapshot = {date,net:netOf(after),accounts:after};
+    if (previous?.opening) snapshot.opening = previous.opening;
+    else if (before.length) snapshot.opening = {net:netOf(before),accounts:before};
+    data.snapshots = [...data.snapshots.filter(entry => entry.date !== date), snapshot]
+      .sort((left,right) => left.date.localeCompare(right.date));
+    return data;
   }
   function route() {
     const page = location.hash.slice(1);
@@ -126,6 +235,76 @@
       cell.colSpan=5;cell.textContent='暂无账户，点击「添加资产」开始。';
     }
   }
+  const periodNames = {'1M':'近一个月','3M':'近三个月','6M':'近六个月','1Y':'近一年',ALL:'全部期间'};
+  const signedMoney = (value, currency = '') => {
+    if (mono.hidden) return '••••••';
+    const sign = value === 0 ? '' : value > 0 ? '+' : '−';
+    return sign + currency + mono.money(Math.abs(value));
+  };
+  function renderChangeDetails(comparison, date) {
+    const details = byId('changeDetails');
+    details.replaceChildren();
+    const note = text => {
+      const message = document.createElement('p');
+      message.className = 'change-note';
+      message.textContent = text;
+      details.append(message);
+    };
+    if (!comparison.startDate) {
+      note('更新账户余额后，即可查看变动明细。');
+      return;
+    }
+    let basis = comparison.baseline;
+    const partial = !Array.isArray(basis?.accounts);
+    if (partial) {
+      const firstDetailed = mono.snapshots.find(entry => entry.date >= comparison.startDate &&
+        entry.date <= date && Array.isArray(entry.accounts));
+      if (!firstDetailed) {
+        note('这段历史只记录了净资产总额。以后更新余额时会记录账户明细。');
+        return;
+      }
+      basis = firstDetailed.opening || firstDetailed;
+    }
+
+    const before = new Map(basis.accounts.map(account => [String(account.id),account]));
+    const after = new Map(mono.accounts.map(account => [String(account.id),account]));
+    const changes = [];
+    let attributed = 0;
+    for (const id of new Set([...before.keys(),...after.keys()])) {
+      const previous = before.get(id);
+      const current = after.get(id);
+      const delta = (current ? positionValue(current) : 0) - (previous ? positionValue(previous) : 0);
+      if (!delta) continue;
+      attributed += delta;
+      const account = current || previous;
+      const suffix = !previous ? ' · 新增' : !current ? ' · 已移除' : '';
+      changes.push({name:account.name, type:account.type + suffix, delta});
+    }
+    changes.sort((left,right) => Math.abs(right.delta) - Math.abs(left.delta));
+    const remainder = cents(comparison.change) - attributed;
+    if (partial && remainder) changes.push({name:'早期净资产变动',type:'历史记录仅含总额',delta:remainder});
+    if (changes.length === 0) {
+      note('所选期间的账户余额没有变化。');
+      return;
+    }
+    if (partial) note('账户明细从首次可比较的记录开始。');
+    const list = document.createElement('dl');
+    list.className = 'change-list';
+    for (const {name,type,delta} of changes) {
+      const row = document.createElement('div');
+      const label = document.createElement('dt');
+      label.textContent = name;
+      const description = document.createElement('small');
+      description.textContent = type;
+      label.append(description);
+      const value = document.createElement('dd');
+      value.textContent = signedMoney(delta / 100,'¥');
+      row.append(label,value);
+      list.append(row);
+    }
+    details.append(list);
+    note('按账户列出对净资产的影响。负债减少时，净资产增加。');
+  }
   function overview() {
     const sums=Object.fromEntries(Object.keys(types).map(t=>[t,0]));
     for (const a of mono.accounts) sums[a.type]+=Math.round(a.balance*100);
@@ -137,22 +316,26 @@
     byId('netValue').innerHTML='<span class="unit">¥</span><span class="balance-amount">'+whole+(decimal?'<span class="decimals">.'+decimal+'</span>':'')+'</span>';
     byId('grossValue').textContent='¥ '+mono.money(gross);
     byId('debtValue').textContent='¥ '+mono.money(debt);
-    const date=mono.personal?today():'2026-11-21';
+    const date=mono.personal?today():demoDate;
     const snapshots=mono.personal?mono.snapshots:undefined;
     const dateEl=document.querySelector('.date time');
     dateEl.dateTime=date;
     const [year,month,day]=date.split('-');
     dateEl.textContent=year+'年'+Number(month)+'月'+Number(day)+'日';
-    const change=window.trendChange(period,net,snapshots,date);
-    const start=net-change;
+    const comparison=window.trendComparison(period,net,snapshots,date);
+    const {change,startValue:start}=comparison;
     const pct=start ? (Math.abs(change/start)*100).toFixed(2)+'%' : '—';
-    byId('changeValue').textContent=mono.hidden?'••••••':(change>=0?'+':'−')+mono.money(Math.abs(change));
-    byId('changePct').innerHTML=tag(change>=0?'up':'down')+(mono.hidden?'•••':pct);
-    const names={'1M':'近一个月','3M':'近三个月','6M':'近六个月','1Y':'近一年',ALL:'全部期间'};
-    byId('periodCaption').textContent=names[period]+(change>=0?'净资产增长':'净资产减少');
+    byId('changeValue').textContent=signedMoney(change);
+    byId('changePct').innerHTML=(change === 0 ? '' : tag(change>0?'up':'down'))+(mono.hidden?'•••':pct);
+    byId('periodCaption').textContent=periodNames[period]+(change>0?'净资产增长':change<0?'净资产减少':'净资产未变');
     document.querySelectorAll('[data-range]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.range===period)));
-    if(mono.personal && mono.snapshots.length<2) byId('periodCaption').textContent=mono.snapshots.length?'首日净资产记录':'暂无净资产记录';
+    if(mono.personal && mono.snapshots.length<2) {
+      byId('periodCaption').textContent=mono.snapshots.length
+        ? (comparison.baseline?.accounts && mono.snapshots[0].opening ? '首日净资产变化' : '首日净资产记录')
+        : '暂无净资产记录';
+    }
     window.renderTrend({period,net,hidden:mono.hidden,date,snapshots});
+    renderChangeDetails(comparison,date);
     for (const t of Object.keys(sums)) sums[t]/=100;
     allocation(sums,gross);
     accountRows(gross);
@@ -176,10 +359,24 @@
     });
     if(page==='overview') overview(); else window.MonoPanels.render(page);
     byId('startPersonal').hidden=mono.personal;
-    byId('dataNote').textContent=writeFailed?'浏览器存储不可用 · 更改仅在本次访问有效':mono.personal?'个人数据 · 本地保存':mono.edited?'历史走势含示例数据 · 本地保存':'示例数据 · 本地保存';
+    byId('dataNote').textContent=storageMessage||(mono.personal?'个人数据 · 本地保存':mono.edited?'历史走势含示例数据 · 本地保存':'示例数据 · 本地保存');
   }
   function closeMenu(){byId('profileMenu').hidden=true;byId('profileBtn').setAttribute('aria-expanded','false')}
-  function privacy(){mono.hidden=!mono.hidden;persist();closeMenu();render()}
+  function privacy(){
+    const candidate = {...currentData(),hidden:!mono.hidden};
+    const result = writeData(candidate);
+    if(result.conflict) {
+      undoState = undefined;
+      acceptData(readState());
+    } else mono.hidden = candidate.hidden;
+    if(!result.ok) storageMessage=result.message;
+    closeMenu();render();
+  }
+  byId('changeDetailsButton').onclick=()=>{
+    const section = byId('changeDetails');
+    section.hidden = !section.hidden;
+    byId('changeDetailsButton').setAttribute('aria-expanded',String(!section.hidden));
+  };
   byId('togglePrivacy').onclick=privacy;
   byId('menuPrivacy').onclick=privacy;
   byId('profileBtn').onclick=()=>{
@@ -193,18 +390,26 @@
     if(route()==='goals') window.MonoPanels.editGoal();
     else window.MonoPanels.editAccount();
   };
-  byId('startPersonal').onclick=()=>{closeMenu();byId('startDialog').showModal()};
+  byId('startPersonal').onclick=()=>{closeMenu();byId('startError').textContent='';byId('startDialog').showModal()};
   byId('cancelStart').onclick=()=>byId('startDialog').close();
   byId('confirmStart').onclick=()=>{
-    Object.assign(mono,{accounts:[],goals:[],snapshots:[],personal:true,edited:false});
-    byId('startDialog').close();persist();location.hash='overview';render();
+    const candidate = {...currentData(),accounts:[],goals:[],snapshots:[],personal:true,edited:false};
+    const result = writeData(candidate);
+    if (!result.ok) {
+      byId('startError').textContent = result.message;
+      return;
+    }
+    undoState = undefined;
+    acceptData(candidate);
+    byId('startDialog').close();location.hash='overview';render();
   };
   document.querySelectorAll('[data-range]').forEach(b=>b.onclick=()=>{period=b.dataset.range;overview()});
   window.addEventListener('hashchange',()=>{closeMenu();render();window.scrollTo(0,0)});
   window.addEventListener('storage',e=>{
-    if(e.key!==key)return;
-    const fresh=readState();
-    Object.assign(mono,{accounts:fresh.accounts,goals:fresh.goals,hidden:!!fresh.hidden,edited:!!fresh.edited,personal:!!fresh.personal,snapshots:fresh.snapshots||[]});
+    if(e.key!==key || e.newValue===storedText)return;
+    acceptData(readState());
+    storageMessage = '';
+    undoState = undefined;
     document.querySelector('dialog[open]')?.close();
     render();
   });
