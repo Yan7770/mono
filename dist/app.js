@@ -15,6 +15,7 @@
     closed:'<path d="m3 3 18 18M10.4 5.8a12.2 12.2 0 0 1 1.6-.2c6.4 0 10 6.4 10 6.4a19 19 0 0 1-3.3 4M6.3 7.8A19 19 0 0 0 2 12s3.6 6.4 10 6.4c2.2 0 4.1-.7 5.6-1.7"/>',
     up:'<path d="m4 16 6-6 4 3 6-8m-6 0h6v6"/>',
     down:'<path d="m4 8 6 6 4-3 6 8m-6 0h6v-6"/>',
+    flat:'<path d="M4 12h16m-5-5 5 5-5 5"/>',
     bank:'<path d="m3 8 9-5 9 5-1 .7H4ZM4 20h16M6 11v6m6-6v6m6-6v6M3 22h18"/>',
     bars:'<path d="M4 20V11h3v9zm7 0V7h3v13zm7 0V3h3v17z"/>',
     house:'<path d="m2 11 10-8 10 8M5 9v12h5v-7h4v7h5V9"/>',
@@ -312,16 +313,24 @@
   function overview() {
     const sums=Object.fromEntries(Object.keys(types).map(t=>[t,0]));
     for (const a of mono.accounts) sums[a.type]+=Math.round(a.balance*100);
-    const gross=Object.entries(sums).reduce((s,[t,v])=>t==='负债'?s:s+v,0)/100;
-    const debt=sums['负债']/100;
-    const net=gross-debt;
+    const grossCents=Object.entries(sums).reduce((s,[t,v])=>t==='负债'?s:s+v,0);
+    const gross=grossCents/100;
+    const net=(grossCents-sums['负债'])/100;
     const [whole,decimal]=mono.money(net).split('.');
     byId('netValue').classList.toggle('long-balance',whole.length>11);
     byId('netValue').innerHTML='<span class="unit">¥</span><span class="balance-amount">'+whole+(decimal?'<span class="decimals">.'+decimal+'</span>':'')+'</span>';
-    byId('grossValue').textContent='¥ '+mono.money(gross);
-    byId('debtValue').textContent='¥ '+mono.money(debt);
     const date=mono.personal?today():demoDate;
     const snapshots=mono.personal?mono.snapshots:undefined;
+    const weekly = window.trendComparison('7D', net, snapshots, date);
+    const movement = byId('weekMovement');
+    const arrow = movement.querySelector('i');
+    const direction = Math.sign(weekly.change);
+    const showArrow = !mono.hidden && Boolean(weekly.startDate);
+    movement.dataset.direction = showArrow && direction ? (direction > 0 ? 'up' : 'down') : 'flat';
+    arrow.hidden = !showArrow;
+    arrow.dataset.icon = movement.dataset.direction;
+    arrow.innerHTML = showArrow ? symbol(movement.dataset.direction) : '';
+    byId('weekAmount').textContent = mono.hidden ? '••••••' : weekly.startDate ? signedMoney(weekly.change, '¥') : '—';
     const dateEl=document.querySelector('.date time');
     dateEl.dateTime=date;
     const [year,month,day]=date.split('-');
@@ -363,7 +372,7 @@
     });
     if(page==='overview') overview(); else window.MonoPanels.render(page);
     byId('startPersonal').hidden=mono.personal;
-    byId('dataNote').textContent=storageMessage||(mono.personal?'个人数据 · 本地保存':mono.edited?'历史走势含示例数据 · 本地保存':'示例数据 · 本地保存');
+    byId('dataNote').textContent=storageMessage||(mono.personal?'个人数据 · 本地保存':'体验空间 · 本地保存');
   }
   function closeMenu(){byId('profileMenu').hidden=true;byId('profileBtn').setAttribute('aria-expanded','false')}
   function privacy(){

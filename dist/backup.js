@@ -202,7 +202,7 @@
       const rows = [
         ['备份时间', localTime(entry.createdAt)],
         ['备份记录', '第 ' + entry.id + ' 次'],
-        ['资产空间', entry.personal ? '个人资产' : '示例数据'],
+        ['资产空间', entry.personal ? '个人资产' : '体验空间'],
         ['资产账户', String(entry.accountCount)],
         ['财富目标', String(entry.goalCount)]
       ];

@@ -51,8 +51,8 @@
           <div class="balance-title"><h2 id="balanceTitle">总净资产</h2><span class="currency-tag">CNY</span><button class="eye-btn" id="togglePrivacy" aria-label="隐藏金额" title="隐藏金额"><i data-icon="eye"></i></button></div>
           <div class="net-row" id="netValue"></div>
           <div class="balance-bottom">
-            <div><span class="summary-label">资产总额</span><span class="summary-number" id="grossValue"></span></div>
-            <div><span class="summary-label">负债总额</span><span class="summary-number" id="debtValue"></span></div>
+            <span id="weekMovement"><i aria-hidden="true"></i><span id="weekAmount"></span></span>
+            <span class="week-period">近 7 天</span>
           </div>
         </div>
       </section>
@@ -63,7 +63,7 @@
           <div class="stat-caption" id="periodCaption">近一年净资产增长</div>
           <div id="trendPlot" aria-label="净资产历史趋势图"></div>
           <div class="range-switch" role="group" aria-label="走势时间范围">
-            <button data-range="1M">1个月</button><button data-range="3M">3个月</button><button data-range="6M">6个月</button><button data-range="1Y">1年</button><button data-range="ALL">全部</button>
+            <button data-range="ALL">全部</button><button data-range="1M">1个月</button><button data-range="3M">3个月</button><button data-range="6M">6个月</button><button data-range="1Y">1年</button>
           </div>
           <section id="changeDetails" class="change-details" aria-label="净资产变动明细" hidden></section>
         </section>
@@ -80,7 +80,7 @@
     </div>
     <div id="secondary" hidden></div>
   </main>
-  <footer><span id="dataNote">示例数据 · 本地保存</span></footer>
+  <footer><span id="dataNote">本地保存</span></footer>
   <dialog class="start-dialog" id="startDialog" aria-labelledby="startTitle"><h2 id="startTitle">启用我的资产空间</h2><p>从空白账户和目标开始，按天保存自己的净资产记录。此操作将替换当前示例和对示例的修改。</p><p id="startError" role="alert"></p><div><button id="cancelStart" autofocus>取消</button><button class="primary" id="confirmStart">从空白开始</button></div></dialog>
   <dialog class="start-dialog" id="resetDialog" aria-labelledby="resetTitle" aria-describedby="resetDescription">
     <h2 id="resetTitle">重置所有数据？</h2>

@@ -2,7 +2,7 @@
   "use strict";
 
   const demoNet = 8426580;
-  const spans = { "1M": 30, "3M": 91, "6M": 183, "1Y": 365, ALL: 730 };
+  const spans = { "7D": 7, "1M": 30, "3M": 91, "6M": 183, "1Y": 365, ALL: 730 };
   const day = 86400000;
   const money = new Intl.NumberFormat("zh-CN", {
     minimumFractionDigits: 2, maximumFractionDigits: 2
@@ -62,10 +62,12 @@
     const dates = Array.from(daily.keys()).sort((a, b) => a - b);
     if (!dates.length) return { points: [] };
     const cutoff = period === "ALL" ? dates[0] : end - spanFor(period) * day;
+    // The weekly comparison uses the closing balance from seven days ago.
+    const firstOpening = period === "7D" && dates[0] === cutoff ? undefined : daily.get(dates[0]).opening;
     const latest = Number.isFinite(net) ? net : daily.get(dates[dates.length - 1]).net;
     if (dates.length === 1) {
       const entry = daily.get(dates[0]);
-      const opening = dates[0] >= cutoff ? entry.opening : undefined;
+      const opening = dates[0] >= cutoff ? firstOpening : undefined;
       const baseline = opening ? { ...opening, date: entry.date } : entry;
       return { start: dates[0], span: 0, points: [{ offset: 0, value: latest }], baseline };
     }
@@ -79,8 +81,8 @@
       const previous = dates.filter(stamp => stamp < start).pop();
       baseline = daily.get(previous);
       points.unshift({ offset: 0, value: baseline.net });
-    } else if (start === dates[0] && baseline.opening) {
-      baseline = { ...baseline.opening, date: baseline.date };
+    } else if (start === dates[0] && firstOpening) {
+      baseline = { ...firstOpening, date: baseline.date };
       points.unshift({ offset: 0, value: baseline.net });
     }
     const last = points[points.length - 1];
