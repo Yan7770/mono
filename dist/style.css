@@ -219,7 +219,7 @@ i svg { width: 20px; height: 20px; }
 .balance-bottom {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   gap: 4px 10px;
   line-height: 1.5;
 }
