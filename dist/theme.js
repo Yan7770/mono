@@ -9,7 +9,7 @@
   function applyTheme(preference) {
     const isDark = preference !== 'light';
     root.dataset.theme = isDark ? 'dark' : 'light';
-    meta.content = isDark ? '#181818' : '#ffffff';
+    meta.content = isDark ? '#111113' : '#f3f3f5';
     toggle?.setAttribute('aria-checked', String(isDark));
   }
 
@@ -27,7 +27,9 @@
     toggle.setAttribute('aria-checked', String(root.dataset.theme === 'dark'));
     toggle.addEventListener('click', () => {
       const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
-      applyTheme(next);
+      const commit = () => applyTheme(next);
+      if (window.MonoMotion?.animateThemeSwitch) window.MonoMotion.animateThemeSwitch(commit);
+      else commit();
       try { localStorage.setItem(storageKey, next); } catch {}
     });
   }, { once: true });

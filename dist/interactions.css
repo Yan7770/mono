@@ -1,48 +1,516 @@
-:is(button:enabled:not([aria-disabled="true"]), .mainnav a, .view-all):active {
-  opacity: .78;
+/* MONO Motion System — Calm, weighted Apple-Wallet damping (260–380ms)
+   Compositor-first (transform / opacity / clip-path / stroke) for 120Hz iOS Safari. */
+
+:root {
+  --ease-fluid: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-press: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-fast: 180ms;
+  --dur-med: 300ms;
+  --dur-slow: 380ms;
 }
 
+/* Base non-motion tactile press fallback */
+:is(button:enabled:not([aria-disabled="true"]), .mainnav a, .view-all):active {
+  opacity: .84;
+}
+
+/* =========================================================
+   Fluid Sliding Pill Containers (Nav / Range / Batch Modes)
+   ========================================================= */
+.mainnav.has-slider,
+.range-switch.has-slider,
+.mp-batch-modes.has-slider {
+  isolation: isolate;
+}
+
+.mainnav.has-slider {
+  position: relative;
+}
+
+.range-switch.has-slider,
+.mp-batch-modes.has-slider {
+  position: relative;
+}
+
+.mono-slider {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform, width;
+}
+
+.mainnav.has-slider > .mono-slider {
+  border-radius: 100px;
+  background: var(--selected);
+  box-shadow: inset 0 1px 0 var(--specular);
+}
+
+.range-switch.has-slider > .mono-slider {
+  border-radius: 100px;
+  background: var(--segment-active);
+  box-shadow: inset 0 1px 0 var(--specular), var(--shadow-selected);
+}
+
+.mp-batch-modes.has-slider > .mono-slider {
+  border-radius: 12px;
+  background: var(--primary);
+}
+
+.mainnav.has-slider > a,
+.range-switch.has-slider > button,
+.mp-batch-modes.has-slider > button {
+  position: relative;
+  z-index: 1;
+}
+
+.mainnav.has-slider > a[aria-current="page"],
+.range-switch.has-slider > button[aria-pressed="true"],
+.mp-batch-modes.has-slider > button[aria-pressed="true"] {
+  background: transparent;
+  box-shadow: none;
+}
+
+@media (max-width: 700px) {
+  .mainnav.has-slider {
+    position: fixed;
+  }
+
+  .mainnav.has-slider > .mono-slider {
+    border-radius: 50%;
+  }
+}
+
+/* =========================================================
+   Smooth Accordion for Change Details
+   ========================================================= */
+.change-details {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 1px solid transparent;
+}
+
+.change-details.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  margin-top: 15px;
+  padding-top: 14px;
+  border-top-color: var(--line);
+}
+
+.change-details-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* =========================================================
+   Allocation Donut <-> Legend Focus States
+   ========================================================= */
+#allocationDonut circle[data-segment] {
+  cursor: pointer;
+}
+
+.alloc-legend .legend-row {
+  border-radius: 8px;
+  padding: 3px 6px;
+  margin-inline: -6px;
+  cursor: pointer;
+}
+
+#allocationDonut[data-focus] circle[data-segment] {
+  opacity: .28;
+}
+
+#allocationDonut[data-focus] circle[data-segment][data-active="true"] {
+  opacity: 1;
+  stroke-width: 17.5;
+}
+
+.alloc-legend[data-focus] .legend-row {
+  opacity: .42;
+}
+
+.alloc-legend[data-focus] .legend-row[data-active="true"] {
+  opacity: 1;
+  background: var(--soft);
+}
+
+/* =========================================================
+   Trend Probe Smooth Visibility
+   ========================================================= */
+#trendPlot [data-cursor] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#trendPlot [data-cursor].is-visible {
+  opacity: 1;
+}
+
+#trendPlot [data-tip] {
+  opacity: 0;
+  transform: translate3d(0, 4px, 0) scale(.97);
+  will-change: transform, opacity;
+}
+
+#trendPlot [data-tip].is-visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+/* =========================================================
+   Motion-Enabled Layer (respects prefers-reduced-motion)
+   ========================================================= */
 @media (prefers-reduced-motion: no-preference) {
-  :is(button:enabled:not([aria-disabled="true"]), .mainnav a, .view-all) {
-    transition: transform 130ms ease-out, opacity 130ms ease-out;
+  /* Theme cross-fade when toggling dark/light */
+  .theme-transitioning,
+  .theme-transitioning :is(body, .topbar, .topbar::before, .balance-card, .panel, .profile-menu, .mainnav, .mainnav::before, .range-switch, .mono-slider, .mp-metrics, .mp-box, .mp-goal, .asset-badge, .mp-account-icon, .avatar, .count, .currency-tag, #changePct) {
+    transition:
+      background-color 280ms var(--ease-fluid),
+      border-color 280ms var(--ease-fluid),
+      color 260ms var(--ease-fluid),
+      box-shadow 280ms var(--ease-fluid) !important;
   }
 
-  :is(button:enabled:not([aria-disabled="true"]), .mainnav a, .view-all):active {
-    transform: scale(.98);
-    transition-duration: 65ms;
+  /* Sliding pill physics */
+  .mono-slider {
+    transition:
+      transform 340ms var(--ease-sheet),
+      width 340ms var(--ease-sheet),
+      height 340ms var(--ease-sheet),
+      opacity 220ms var(--ease-fluid);
   }
 
+  .mono-slider.is-instant {
+    transition: none !important;
+  }
+
+  /* Layered tactile touch & hover responses */
+  :is(.mainnav a, .range-switch button, .mp-batch-modes button, .view-all, .profile-menu button) {
+    transition:
+      color 260ms var(--ease-fluid),
+      background-color 240ms var(--ease-fluid),
+      transform 240ms var(--ease-sheet),
+      opacity 180ms ease-out;
+  }
+
+  :is(.primary, .mp-primary, .mp-secondary, .mp-destructive, .dock-add) {
+    transition:
+      background-color 220ms var(--ease-fluid),
+      border-color 220ms var(--ease-fluid),
+      color 220ms var(--ease-fluid),
+      transform 260ms var(--ease-sheet),
+      box-shadow 260ms var(--ease-sheet),
+      opacity 180ms ease-out;
+  }
+
+  :is(.primary, .mp-primary, .mp-destructive, .dock-add):active {
+    transform: scale(.95);
+    opacity: .92;
+    transition-duration: 90ms;
+  }
+
+  :is(.mp-secondary, .mainnav a, .range-switch button, .view-all, .profile-menu button):active {
+    transform: scale(.975);
+    opacity: .84;
+    transition-duration: 85ms;
+  }
+
+  :is(.eye-btn, .row-open, .mp-close, .mp-edit, .profile) {
+    transition:
+      background-color 220ms var(--ease-fluid),
+      color 220ms var(--ease-fluid),
+      transform 240ms var(--ease-sheet),
+      opacity 180ms ease-out;
+  }
+
+  :is(.eye-btn, .row-open, .mp-close, .mp-edit):active {
+    transform: scale(.91);
+    opacity: .8;
+    transition-duration: 80ms;
+  }
+
+  /* Dock FAB subtle rotation when Quick Actions sheet is open */
+  .dock-add i {
+    transition: transform 320ms var(--ease-sheet);
+  }
+
+  .dock-add.is-open i {
+    transform: rotate(45deg);
+  }
+
+  /* Account rows gentle press & surface highlight */
+  .asset-table tbody tr,
+  .mp-account {
+    transition: background-color 220ms var(--ease-fluid), transform 220ms var(--ease-sheet);
+  }
+
+  @media (hover: hover) {
+    .asset-table tbody tr:hover {
+      background: var(--subtle);
+    }
+  }
+
+  .mp-account:active,
+  .asset-name:active {
+    transform: scale(.992);
+    transition-duration: 90ms;
+  }
+
+  /* Theme switch thumb glide */
+  .theme-switch {
+    transition: background-color 280ms var(--ease-sheet), border-color 280ms var(--ease-sheet);
+  }
+
+  .theme-switch::before {
+    transition: transform 300ms var(--ease-sheet), background-color 260ms var(--ease-sheet);
+  }
+
+  /* Directional page transitions */
+  .page-enter {
+    animation: mono-page-enter-right 300ms var(--ease-fluid) both;
+  }
+
+  .page-enter.from-left {
+    animation-name: mono-page-enter-left;
+  }
+
+  /* Initial once-only subtle reveal for Overview hero & cards */
+  .mono-intro-stage {
+    animation: mono-intro-fade 420ms var(--ease-fluid) both;
+  }
+
+  /* Privacy Blur Veil (keeps •••••• with soft frosted transition) */
+  .privacy-veil-out {
+    filter: blur(5px);
+    opacity: .22;
+    transform: scale(.985);
+    transition: filter 115ms ease-in, opacity 115ms ease-in, transform 115ms ease-in;
+  }
+
+  .privacy-veil-in {
+    animation: mono-privacy-reveal 280ms var(--ease-fluid) both;
+  }
+
+  /* Change Details Accordion */
+  .change-button {
+    transition: background-color 220ms var(--ease-fluid), transform 220ms var(--ease-sheet);
+  }
+
+  .change-button > i {
+    transition: transform 320ms var(--ease-sheet);
+  }
+
+  .change-details {
+    transition:
+      grid-template-rows 340ms var(--ease-fluid),
+      opacity 280ms var(--ease-fluid),
+      margin-top 340ms var(--ease-fluid),
+      padding-top 340ms var(--ease-fluid),
+      border-color 280ms var(--ease-fluid);
+  }
+
+  .change-details.is-open .change-list > div {
+    animation: mono-row-fade 280ms var(--ease-fluid) both;
+  }
+
+  /* Allocation Donut & Legend interactions */
+  #allocationDonut circle[data-segment] {
+    transition: opacity 280ms var(--ease-fluid), stroke-width 280ms var(--ease-fluid);
+  }
+
+  .alloc-legend .legend-row {
+    transition: opacity 260ms var(--ease-fluid), background-color 240ms var(--ease-fluid);
+  }
+
+  /* Goal progress bar & Account share track */
+  .mp-fill,
+  .share-track span {
+    transition: width 460ms var(--ease-fluid);
+  }
+
+  /* Batch notice smooth entrance */
+  .mp-batch-notice,
+  .mp-batch-undo-message {
+    animation: mono-notice-enter 320ms var(--ease-fluid) both;
+  }
+
+  /* Trend Chart: first-load reveal, range crossfade, live pulse, smooth probe */
+  #trendPlot .trend-series-intro {
+    animation: mono-trend-reveal 640ms var(--ease-fluid) both;
+  }
+
+  #trendPlot .trend-area-intro {
+    animation: mono-area-fade 680ms var(--ease-fluid) 80ms both;
+  }
+
+  #trendPlot .trend-series-swap {
+    animation: mono-area-fade 260ms var(--ease-fluid) both;
+  }
+
+  #trendPlot .trend-live-halo {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: mono-live-pulse 3.6s ease-in-out infinite;
+  }
+
+  #trendPlot [data-cursor] {
+    transition: opacity 180ms var(--ease-fluid);
+  }
+
+  #trendPlot [data-cursor] line,
+  #trendPlot [data-cursor] circle {
+    transition: transform 90ms linear;
+  }
+
+  #trendPlot [data-tip] {
+    transition:
+      opacity 200ms var(--ease-fluid),
+      transform 220ms var(--ease-fluid),
+      left 110ms var(--ease-fluid),
+      top 110ms var(--ease-fluid);
+  }
+
+  /* Profile Menu Enter + Exit */
+  .profile-menu:not([hidden]) {
+    transform-origin: top right;
+    animation: mono-menu-enter 280ms var(--ease-sheet) both;
+  }
+
+  .profile-menu.is-closing {
+    transform-origin: top right;
+    animation: mono-menu-exit 190ms var(--ease-press) both;
+    pointer-events: none;
+  }
+
+  /* Dialogs & Desktop Modals Enter + Exit */
   dialog[open] {
-    animation: mono-dialog-enter 180ms cubic-bezier(.2, .7, .2, 1);
+    animation: mono-dialog-enter 320ms var(--ease-sheet) both;
   }
 
   dialog[open]::backdrop {
-    animation: mono-backdrop-enter 160ms ease-out;
+    animation: mono-backdrop-enter 280ms var(--ease-fluid) both;
   }
 
-  .profile-menu:not([hidden]) {
-    transform-origin: top right;
-    animation: mono-dialog-enter 150ms ease-out;
+  dialog.is-closing {
+    animation: mono-dialog-exit 210ms var(--ease-press) both !important;
+    pointer-events: none;
+  }
+
+  dialog.is-closing::backdrop {
+    animation: mono-backdrop-exit 200ms ease-out both !important;
+  }
+
+  /* Quick Actions & Mobile Sheets Enter + Exit (iOS Sheet Physics) */
+  .quick-actions[open] {
+    animation: mono-sheet-enter 340ms var(--ease-sheet) both;
+  }
+
+  .quick-actions.is-closing {
+    animation: mono-sheet-exit 220ms var(--ease-press) both !important;
   }
 }
 
 @media (max-width: 700px) and (prefers-reduced-motion: no-preference) {
   .mp-dialog[open] {
-    animation-name: mono-sheet-enter;
+    animation: mono-sheet-enter 350ms var(--ease-sheet) both;
+  }
+
+  .mp-dialog.is-closing {
+    animation: mono-sheet-exit 230ms var(--ease-press) both !important;
   }
 }
 
+/* =========================================================
+   Keyframes
+   ========================================================= */
+@keyframes mono-intro-fade {
+  from { opacity: .01; transform: translate3d(0, 6px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes mono-page-enter-right {
+  from { opacity: .18; transform: translate3d(10px, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes mono-page-enter-left {
+  from { opacity: .18; transform: translate3d(-10px, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes mono-privacy-reveal {
+  from { filter: blur(5px); opacity: .24; transform: scale(.985); }
+  to { filter: blur(0); opacity: 1; transform: scale(1); }
+}
+
+@keyframes mono-row-fade {
+  from { opacity: 0; transform: translate3d(0, 4px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes mono-notice-enter {
+  from { opacity: 0; transform: translate3d(0, -6px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes mono-trend-reveal {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes mono-area-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes mono-live-pulse {
+  0%, 100% { opacity: .12; transform: scale(1); }
+  50% { opacity: .34; transform: scale(1.65); }
+}
+
+@keyframes mono-menu-enter {
+  from { opacity: 0; transform: translate3d(0, -6px, 0) scale(.95); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes mono-menu-exit {
+  from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  to { opacity: 0; transform: translate3d(0, -4px, 0) scale(.96); }
+}
+
 @keyframes mono-dialog-enter {
-  from { opacity: 0; transform: scale(.98); }
-  to { opacity: 1; transform: scale(1); }
+  from { opacity: 0; transform: translate3d(0, 10px, 0) scale(.97); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes mono-dialog-exit {
+  from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  to { opacity: 0; transform: translate3d(0, 8px, 0) scale(.975); }
 }
 
 @keyframes mono-sheet-enter {
-  from { opacity: 0; transform: translateY(14px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translate3d(0, 28px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes mono-sheet-exit {
+  from { opacity: 1; transform: translate3d(0, 0, 0); }
+  to { opacity: 0; transform: translate3d(0, 28px, 0); }
 }
 
 @keyframes mono-backdrop-enter {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+@keyframes mono-backdrop-exit {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }

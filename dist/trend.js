@@ -175,8 +175,11 @@
       if (i === 0) return "M" + px + " " + py;
       return Array.isArray(snapshots) ? "H" + px + "V" + py : "L" + px + " " + py;
     }).join("");
-    const seriesPaths = span ? `<path d="${path}L${right} ${bottom}L${left} ${bottom}Z" fill="url(#monoTrendFill)"/>
-        <path d="${path}" fill="none" stroke="var(--ink,#242424)" stroke-width="1.7"
+    const reveal = options.reveal || '';
+    const areaClass = reveal === 'intro' ? ' class="trend-area-intro"' : reveal === 'swap' ? ' class="trend-series-swap"' : '';
+    const lineClass = reveal === 'intro' ? ' class="trend-series-intro"' : reveal === 'swap' ? ' class="trend-series-swap"' : '';
+    const seriesPaths = span ? `<path${areaClass} d="${path}L${right} ${bottom}L${left} ${bottom}Z" fill="url(#monoTrendFill)"/>
+        <path${lineClass} d="${path}" fill="none" stroke="var(--ink,#242424)" stroke-width="1.7"
           stroke-linejoin="round" stroke-linecap="round"/>` : "";
     const endY = y(net).toFixed(2);
     plot.style.position = "relative";
@@ -189,13 +192,13 @@
         </linearGradient></defs>
         <g fill="var(--muted,#707070)" font-family="inherit" font-size="11.5">${pieces.join("")}</g>
         ${seriesPaths}
-        <circle cx="${right}" cy="${endY}" r="5.7" fill="var(--ink,#242424)" opacity=".1"/>
+        <circle class="trend-live-halo" cx="${right}" cy="${endY}" r="5.7" fill="var(--ink,#242424)" opacity=".12"/>
         <circle cx="${right}" cy="${endY}" r="3.1" fill="var(--ink,#242424)"/>
-        <g data-cursor visibility="hidden" pointer-events="none">
-          <line y1="${top}" y2="${bottom}" stroke="var(--muted,#707070)" stroke-opacity=".55" stroke-dasharray="3 4"/>
-          <circle r="4.4" fill="var(--ink,#242424)" stroke="var(--surface,#fff)" stroke-width="1.8"/>
+        <g data-cursor pointer-events="none">
+          <line x1="0" x2="0" y1="${top}" y2="${bottom}" stroke="var(--muted,#707070)" stroke-opacity=".55" stroke-dasharray="3 4"/>
+          <circle cx="0" cy="0" r="4.4" fill="var(--ink,#242424)" stroke="var(--surface,#fff)" stroke-width="1.8"/>
         </g>
-      </svg><div data-tip role="status" hidden style="position:absolute;z-index:2;pointer-events:none;
+      </svg><div data-tip role="status" aria-hidden="true" style="position:absolute;z-index:2;pointer-events:none;
         box-sizing:border-box;white-space:nowrap;border:1px solid var(--line,#e5e5e5);border-radius:12px;
         background:var(--surface,#fff);color:var(--ink,#242424);padding:8px 11px;line-height:1.55;
         font:inherit;font-size:13px;font-variant-numeric:tabular-nums;box-shadow:0 5px 18px #00000012"></div>`;
@@ -204,6 +207,7 @@
     const cursor = svg.querySelector("[data-cursor]");
     const tooltip = plot.querySelector("[data-tip]");
     let index = span;
+    let tipVisible = false;
     function show(i) {
       index = Math.max(0, Math.min(span, i));
       let pointIndex = points.length - 1;
@@ -211,21 +215,25 @@
       const value = points[pointIndex].value;
       const px = x(index), py = y(value);
       const [line, circle] = cursor.children;
-      line.setAttribute("x1", px);
-      line.setAttribute("x2", px);
-      circle.setAttribute("cx", px);
-      circle.setAttribute("cy", py);
-      cursor.setAttribute("visibility", "visible");
+      line.style.transform = `translate3d(${px.toFixed(2)}px, 0, 0)`;
+      circle.style.transform = `translate3d(${px.toFixed(2)}px, ${py.toFixed(2)}px, 0)`;
+      cursor.classList.add("is-visible");
       tooltip.innerHTML = `<span style="color:var(--muted,#707070);font-size:12px">${dateAt(index).toISOString().slice(0, 10)}</span><br>
         <strong style="font-weight:550">${hidden ? "••••••" : "¥ " + money.format(value)}</strong>`;
-      tooltip.hidden = false;
+      tooltip.setAttribute("aria-hidden", "false");
       const tipWidth = tooltip.offsetWidth;
       tooltip.style.left = Math.max(0, Math.min(width - tipWidth, px + tipWidth + 12 < right ? px + 12 : px - tipWidth - 12)) + "px";
       tooltip.style.top = Math.max(0, Math.min(height - tooltip.offsetHeight, py - 25)) + "px";
+      if (!tipVisible) {
+        tipVisible = true;
+        requestAnimationFrame(() => tooltip.classList.add("is-visible"));
+      }
     }
     function hide() {
-      cursor.setAttribute("visibility", "hidden");
-      tooltip.hidden = true;
+      tipVisible = false;
+      cursor.classList.remove("is-visible");
+      tooltip.classList.remove("is-visible");
+      tooltip.setAttribute("aria-hidden", "true");
     }
     dismissProbe = hide;
     function track(event) {
@@ -236,7 +244,7 @@
     svg.onpointermove = svg.onpointerdown = track;
     svg.onpointerleave = event => { if (event.pointerType !== "touch") hide(); };
     svg.onpointercancel = svg.onblur = hide;
-    svg.onfocus = () => { if (tooltip.hidden) show(index); };
+    svg.onfocus = () => { if (!tipVisible) show(index); };
     svg.onkeydown = event => {
       const moves = { ArrowLeft: index - 1, ArrowRight: index + 1, Home: 0, End: span };
       if (event.key === "Escape") hide();
@@ -257,7 +265,7 @@
       if (typeof ResizeObserver !== "undefined") {
         observer = new ResizeObserver(() => {
           cancelAnimationFrame(frame);
-          frame = requestAnimationFrame(() => paint(activeHost, activeOptions));
+          frame = requestAnimationFrame(() => paint(activeHost, { ...activeOptions, reveal: "" }));
         });
         observer.observe(plot);
       }

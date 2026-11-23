@@ -139,7 +139,11 @@
     const explanation = element('p', 'mono-backup-description', description);
     explanation.id = 'mono-backup-description';
     dialog.setAttribute('aria-describedby', explanation.id);
-    const close = button('×', 'mp-close', () => dialog.close());
+    const closeSheet = () => {
+      if (window.MonoMotion?.closeDialog) window.MonoMotion.closeDialog(dialog);
+      else dialog.close();
+    };
+    const close = button('×', 'mp-close', closeSheet);
     close.setAttribute('aria-label', '关闭');
     close.autofocus = true;
     const header = element('div', 'mp-dialog-head');
@@ -149,13 +153,17 @@
     feedback.setAttribute('role', 'alert');
     const actions = element('div', 'mp-actions');
     dialog.append(header, explanation, body, feedback, actions);
+    window.MonoMotion?.bindDialogEscape(dialog);
+    dialog.addEventListener('click', event => {
+      if (event.target === dialog) closeSheet();
+    });
     dialog.addEventListener('close', () => {
       dialog.remove();
       if (profile?.isConnected) profile.focus();
     }, { once: true });
     if (profile?.getAttribute('aria-expanded') === 'true') profile.click();
     document.body.append(dialog);
-    return { dialog, heading, explanation, body, feedback, actions };
+    return { dialog, heading, explanation, body, feedback, actions, closeSheet };
   }
 
   function finish(view, title, description) {
@@ -163,7 +171,7 @@
     view.explanation.textContent = description;
     view.body.replaceChildren();
     view.feedback.textContent = '';
-    view.actions.replaceChildren(button('完成', 'mp-primary', () => view.dialog.close()));
+    view.actions.replaceChildren(button('完成', 'mp-primary', () => view.closeSheet()));
     view.actions.firstChild.focus();
   }
 
@@ -185,7 +193,7 @@
       if (!view.dialog.open) return;
       view.heading.textContent = '备份失败';
       view.explanation.textContent = storageError(error, '无法写入本地备份，请检查浏览器存储后重试。');
-      view.actions.append(button('关闭', 'mp-secondary', () => view.dialog.close()));
+      view.actions.append(button('关闭', 'mp-secondary', () => view.closeSheet()));
     }
   }
 
@@ -236,7 +244,7 @@
       explanation.textContent = '正在读取本地备份…';
       body.replaceChildren();
       feedback.textContent = '';
-      actions.replaceChildren(button('取消', 'mp-secondary', () => dialog.close()));
+      actions.replaceChildren(button('取消', 'mp-secondary', () => view.closeSheet()));
       try {
         const entries = await window.MonoBackupStore.list();
         if (!dialog.open) return;

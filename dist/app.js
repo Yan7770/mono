@@ -192,29 +192,66 @@
     const page = location.hash.slice(1);
     return ['goals','accounts'].includes(page) ? page : 'overview';
   }
-  function allocation(sums, gross) {
+  function allocation(sums, gross, animateIntro = false) {
     const items = Object.entries(types).filter(([type]) => type !== '负债' && sums[type]>0)
       .sort(([a],[b]) => sums[b]-sums[a]);
     byId('classCount').textContent=items.length;
     const ring = byId('allocationDonut');
+    ring.removeAttribute('data-focus');
     ring.innerHTML = '<circle cx="90" cy="90" r="66" fill="none" stroke="var(--allocation-track)" stroke-width="15"/>';
     const circumference = Math.PI*132;
     let offset = 0;
     const legend = byId('allocationLegend');
+    legend.removeAttribute('data-focus');
     legend.replaceChildren();
-    for (const [name,{color}] of items) {
+    const shouldAnimate = animateIntro && !window.MonoMotion?.isReduced();
+    let activeIdx = null;
+    const setFocus = idx => {
+      activeIdx = idx;
+      if (idx === null) {
+        ring.removeAttribute('data-focus');
+        legend.removeAttribute('data-focus');
+      } else {
+        ring.setAttribute('data-focus', String(idx));
+        legend.setAttribute('data-focus', String(idx));
+      }
+      ring.querySelectorAll('circle[data-segment]').forEach(el => {
+        el.dataset.active = String(Number(el.dataset.segment) === idx);
+      });
+      legend.querySelectorAll('.legend-row').forEach(el => {
+        el.dataset.active = String(Number(el.dataset.segment) === idx);
+      });
+    };
+    items.forEach(([name,{color}], idx) => {
       const share = sums[name] / gross;
       const arc = circumference*share;
       const segment = document.createElementNS('http://www.w3.org/2000/svg','circle');
       const gap = items.length>1 ? Math.min(4.2,arc*.3) : 0;
-      for(const [k,v] of Object.entries({cx:90,cy:90,r:66,fill:'none',stroke:color,'stroke-width':15,'stroke-dasharray':(arc-gap)+' '+(circumference-arc+gap),'stroke-dashoffset':-offset,transform:'rotate(-90 90 90)'})) segment.setAttribute(k,v);
+      const finalDash = (arc-gap)+' '+(circumference-arc+gap);
+      for(const [k,v] of Object.entries({cx:90,cy:90,r:66,fill:'none',stroke:color,'stroke-width':15,'stroke-dasharray':finalDash,'stroke-dashoffset':-offset,transform:'rotate(-90 90 90)','data-segment':idx})) segment.setAttribute(k,v);
+      if (shouldAnimate && typeof segment.animate === 'function') {
+        segment.animate(
+          [
+            { strokeDasharray: '0 ' + circumference, strokeDashoffset: 0, opacity: 0.25 },
+            { strokeDasharray: finalDash, strokeDashoffset: -offset, opacity: 1 }
+          ],
+          { duration: 620, delay: idx * 45, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'backwards' }
+        );
+      }
+      segment.addEventListener('pointerenter', e => { if (e.pointerType !== 'touch') setFocus(idx); });
+      segment.addEventListener('pointerleave', e => { if (e.pointerType !== 'touch') setFocus(null); });
+      segment.addEventListener('click', () => setFocus(activeIdx === idx ? null : idx));
       ring.append(segment);
       offset+=arc;
       const row=document.createElement('div');
       row.className='legend-row';
+      row.dataset.segment=String(idx);
       row.innerHTML='<b style="background:'+color+'"></b><span>'+name+'</span><span class="rule"></span><strong>'+(share*100).toFixed(1)+'%</strong>';
+      row.addEventListener('pointerenter', e => { if (e.pointerType !== 'touch') setFocus(idx); });
+      row.addEventListener('pointerleave', e => { if (e.pointerType !== 'touch') setFocus(null); });
+      row.addEventListener('click', () => setFocus(activeIdx === idx ? null : idx));
       legend.append(row);
-    }
+    });
     if (!items.length) legend.textContent='添加资产后可查看配置占比';
   }
   function accountRows(gross) {
@@ -252,11 +289,14 @@
   function renderChangeDetails(comparison, date) {
     const details = byId('changeDetails');
     details.replaceChildren();
+    const inner = document.createElement('div');
+    inner.className = 'change-details-inner';
+    details.append(inner);
     const note = text => {
       const message = document.createElement('p');
       message.className = 'change-note';
       message.textContent = text;
-      details.append(message);
+      inner.append(message);
     };
     if (!comparison.startDate) {
       note('更新账户余额后，即可查看变动明细。');
@@ -311,18 +351,51 @@
       row.append(label,value);
       list.append(row);
     }
-    details.append(list);
+    inner.append(list);
     note('按账户列出对净资产的影响。负债减少时，净资产增加。');
   }
-  function overview() {
+  let lastOverviewNet;
+  let lastOverviewGross;
+  let lastOverviewDebt;
+  let lastOverviewChange;
+  let lastOverviewWeek;
+  function overview({ isIntro = false, rangeChanged = false, canTween = false } = {}) {
     const sums=Object.fromEntries(Object.keys(types).map(t=>[t,0]));
     for (const a of mono.accounts) sums[a.type]+=Math.round(a.balance*100);
     const grossCents=Object.entries(sums).reduce((s,[t,v])=>t==='负债'?s:s+v,0);
     const gross=grossCents/100;
+    const debt=sums['负债']/100;
     const net=(grossCents-sums['负债'])/100;
-    const [whole,decimal]=mono.money(net).split('.');
-    byId('netValue').classList.toggle('long-balance',whole.length>11);
-    byId('netValue').innerHTML='<span class="unit">¥</span><span class="balance-amount">'+whole+(decimal?'<span class="decimals">.'+decimal+'</span>':'')+'</span>';
+    const netNode = byId('netValue');
+    if (canTween && !mono.hidden && Number.isFinite(lastOverviewNet) && lastOverviewNet !== net && window.MonoMotion) {
+      window.MonoMotion.tweenNetHero(netNode, lastOverviewNet, net);
+    } else {
+      window.MonoMotion?.cancelTween(netNode);
+      const [whole,decimal]=mono.money(net).split('.');
+      netNode.classList.toggle('long-balance',whole.length>11);
+      netNode.innerHTML='<span class="unit">¥</span><span class="balance-amount">'+whole+(decimal?'<span class="decimals">.'+decimal+'</span>':'')+'</span>';
+    }
+    lastOverviewNet = mono.hidden ? undefined : net;
+    const grossNode = byId('grossValue');
+    if (grossNode) {
+      if (canTween && !mono.hidden && Number.isFinite(lastOverviewGross) && lastOverviewGross !== gross && window.MonoMotion) {
+        window.MonoMotion.tweenCurrencyText(grossNode, lastOverviewGross, gross, { prefix: '¥ ', duration: 340 });
+      } else {
+        window.MonoMotion?.cancelTween(grossNode);
+        grossNode.textContent = (mono.hidden ? '' : '¥ ') + mono.money(gross);
+      }
+      lastOverviewGross = mono.hidden ? undefined : gross;
+    }
+    const debtNode = byId('debtValue');
+    if (debtNode) {
+      if (canTween && !mono.hidden && Number.isFinite(lastOverviewDebt) && lastOverviewDebt !== debt && window.MonoMotion) {
+        window.MonoMotion.tweenCurrencyText(debtNode, lastOverviewDebt, debt, { prefix: '¥ ', duration: 340 });
+      } else {
+        window.MonoMotion?.cancelTween(debtNode);
+        debtNode.textContent = (mono.hidden ? '' : '¥ ') + mono.money(debt);
+      }
+      lastOverviewDebt = mono.hidden ? undefined : debt;
+    }
     const date=mono.personal?today():demoDate;
     const snapshots=mono.personal?mono.snapshots:undefined;
     const weekly = window.trendComparison('7D', net, snapshots, date);
@@ -334,7 +407,14 @@
     arrow.hidden = !showArrow;
     arrow.dataset.icon = movement.dataset.direction;
     arrow.innerHTML = showArrow ? symbol(movement.dataset.direction) : '';
-    byId('weekAmount').textContent = mono.hidden ? '••••••' : weekly.startDate ? signedMoney(weekly.change, '¥') : '—';
+    const weekNode = byId('weekAmount');
+    if (canTween && !mono.hidden && weekly.startDate && Number.isFinite(lastOverviewWeek) && lastOverviewWeek !== weekly.change && window.MonoMotion) {
+      window.MonoMotion.tweenSignedText(weekNode, lastOverviewWeek, weekly.change, { currency: '¥', forceSign: true, duration: 320 });
+    } else {
+      window.MonoMotion?.cancelTween(weekNode);
+      weekNode.textContent = mono.hidden ? '••••••' : weekly.startDate ? signedMoney(weekly.change, '¥') : '—';
+    }
+    lastOverviewWeek = mono.hidden || !weekly.startDate ? undefined : weekly.change;
     const dateEl=document.querySelector('.date time');
     dateEl.dateTime=date;
     const [year,month,day]=date.split('-');
@@ -342,27 +422,40 @@
     const comparison=window.trendComparison(period,net,snapshots,date);
     const {change,startValue:start}=comparison;
     const pct=start ? (Math.abs(change/start)*100).toFixed(2)+'%' : '—';
-    byId('changeValue').textContent=signedMoney(change);
+    const changeNode = byId('changeValue');
+    if (canTween && !mono.hidden && Number.isFinite(lastOverviewChange) && lastOverviewChange !== change && window.MonoMotion) {
+      window.MonoMotion.tweenSignedText(changeNode, lastOverviewChange, change, { currency: '', forceSign: true, duration: 340 });
+    } else {
+      window.MonoMotion?.cancelTween(changeNode);
+      changeNode.textContent=signedMoney(change);
+    }
+    lastOverviewChange = mono.hidden ? undefined : change;
     byId('changePct').innerHTML=(change === 0 ? '' : tag(change>0?'up':'down'))+(mono.hidden?'•••':pct);
     byId('periodCaption').textContent=periodNames[period]+(change>0?'净资产增长':change<0?'净资产减少':'净资产未变');
     document.querySelectorAll('[data-range]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.range===period)));
+    const rangeSwitch = document.querySelector('.range-switch');
+    const activeRangeBtn = rangeSwitch?.querySelector('[data-range][aria-pressed="true"]');
+    window.MonoMotion?.syncSlider(rangeSwitch, activeRangeBtn, { instant: !rangeChanged });
     if(mono.personal && mono.snapshots.length<2) {
       byId('periodCaption').textContent=mono.snapshots.length
         ? (comparison.baseline?.accounts && mono.snapshots[0].opening ? '首日净资产变化' : '首日净资产记录')
         : '暂无净资产记录';
     }
-    window.renderTrend({period,net,hidden:mono.hidden,date,snapshots});
+    window.renderTrend({period,net,hidden:mono.hidden,date,snapshots,reveal:isIntro?'intro':rangeChanged?'swap':''});
     renderChangeDetails(comparison,date);
     for (const t of Object.keys(sums)) sums[t]/=100;
-    allocation(sums,gross);
+    allocation(sums,gross,isIntro);
     accountRows(gross);
   }
+  const pageOrder = { overview: 0, accounts: 1, goals: 2 };
   let renderedPage;
   let amountsWereHidden;
-  function render() {
+  let hasPlayedIntro = false;
+  function render({ rangeChanged = false } = {}) {
     const page=route();
     const root = byId(page === 'overview' ? 'overview' : 'secondary');
     const samePage = renderedPage === page;
+    const isIntro = page === 'overview' && !hasPlayedIntro;
     const compareAmounts = samePage && !mono.hidden && !amountsWereHidden &&
       !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const previousAmounts = compareAmounts ? new Map(Array.from(root.querySelectorAll('[data-amount-key]'),
@@ -385,10 +478,29 @@
       if(link.dataset.page===page) link.setAttribute('aria-current','page');
       else link.removeAttribute('aria-current');
     });
-    if(page==='overview') overview(); else window.MonoPanels.render(page);
+    const mainNav = document.querySelector('.mainnav');
+    const activeNav = mainNav?.querySelector('[data-page][aria-current="page"]');
+    window.MonoMotion?.syncSlider(mainNav, activeNav, { instant: !renderedPage });
+    if(page==='overview') {
+      overview({ isIntro, rangeChanged, canTween: compareAmounts });
+      if (isIntro) {
+        hasPlayedIntro = true;
+        if (!window.MonoMotion?.isReduced()) {
+          root.classList.add('mono-intro-stage');
+          root.addEventListener('animationend', () => root.classList.remove('mono-intro-stage'), { once: true });
+        }
+      }
+    } else {
+      window.MonoPanels.render(page);
+    }
     if (renderedPage && !samePage) {
       const content = page === 'overview' ? root : root.firstElementChild;
+      const movingLeft = (pageOrder[page] ?? 0) < (pageOrder[renderedPage] ?? 0);
+      content.classList.remove('page-enter', 'from-left');
+      void content.offsetWidth;
       content.classList.add('page-enter');
+      if (movingLeft) content.classList.add('from-left');
+      content.addEventListener('animationend', () => content.classList.remove('page-enter', 'from-left'), { once: true });
     }
     if (previousAmounts) {
       for (const node of root.querySelectorAll('[data-amount-key]')) {
@@ -400,7 +512,9 @@
     byId('startPersonal').hidden=mono.personal;
     byId('dataNote').textContent=storageMessage||(mono.personal?'':'体验空间');
   }
-  function closeMenu(){byId('profileMenu').hidden=true;byId('profileBtn').setAttribute('aria-expanded','false')}
+  function closeMenu(){
+    window.MonoMotion?.hideMenuAnimated(byId('profileMenu'), byId('profileBtn'));
+  }
   function privacy(){
     const candidate = {...currentData(),hidden:!mono.hidden};
     const result = writeData(candidate);
@@ -409,43 +523,91 @@
       acceptData(readState());
     } else mono.hidden = candidate.hidden;
     if(!result.ok) storageMessage=result.message;
-    closeMenu();render();
+    closeMenu();
+    const getVeilNodes = () => {
+      const page = route();
+      const root = byId(page === 'overview' ? 'overview' : 'secondary');
+      return root.querySelectorAll('[data-amount-key], #changePct, .donut-center, .alloc-legend strong, .mp-percent');
+    };
+    if (window.MonoMotion?.playPrivacyVeil) {
+      window.MonoMotion.playPrivacyVeil(getVeilNodes, () => render());
+    } else {
+      render();
+    }
   }
+  let detailsCloseTimer;
   byId('changeDetailsButton').onclick=()=>{
     const section = byId('changeDetails');
-    section.hidden = !section.hidden;
-    byId('changeDetailsButton').setAttribute('aria-expanded',String(!section.hidden));
+    const btn = byId('changeDetailsButton');
+    const expanding = section.hidden || !section.classList.contains('is-open');
+    clearTimeout(detailsCloseTimer);
+    if (expanding) {
+      section.hidden = false;
+      void section.offsetHeight;
+      section.classList.add('is-open');
+      btn.setAttribute('aria-expanded', 'true');
+    } else {
+      btn.setAttribute('aria-expanded', 'false');
+      section.classList.remove('is-open');
+      if (window.MonoMotion?.isReduced()) {
+        section.hidden = true;
+      } else {
+        detailsCloseTimer = setTimeout(() => {
+          if (!section.classList.contains('is-open')) section.hidden = true;
+        }, 350);
+      }
+    }
   };
   byId('togglePrivacy').onclick=privacy;
   byId('menuPrivacy').onclick=privacy;
   byId('profileBtn').onclick=()=>{
     const menu=byId('profileMenu');
-    menu.hidden=!menu.hidden;byId('profileBtn').setAttribute('aria-expanded',String(!menu.hidden));
+    const opening = menu.hidden || menu.dataset.closing === '1';
+    if (opening) window.MonoMotion?.showMenuAnimated(menu, byId('profileBtn'));
+    else closeMenu();
   };
   document.addEventListener('click',e=>{if(!e.target.closest('.profile-wrap')) closeMenu()});
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!byId('profileMenu').hidden){closeMenu();byId('profileBtn').focus()}});
   byId('addAsset').onclick=()=>window.MonoPanels.editAccount();
   byId('overviewEntry').onclick=()=>window.MonoPanels.recordEntry();
   const quickActions = byId('quickActions');
+  window.MonoMotion?.bindDialogEscape(quickActions, () => byId('dockAdd').classList.remove('is-open'));
   byId('dockAdd').onclick=()=>{
     byId('dockAdd').focus({preventScroll:true});
     if(route()==='goals') window.MonoPanels.editGoal();
     else if (!mono.accounts.length) window.MonoPanels.editAccount();
     else {
       quickActions.returnValue = '';
+      byId('dockAdd').classList.add('is-open');
       quickActions.showModal();
     }
   };
+  quickActions.querySelector('form').addEventListener('submit', event => {
+    if (window.MonoMotion?.isReduced()) return;
+    event.preventDefault();
+    const actionValue = event.submitter?.value || 'cancel';
+    byId('dockAdd').classList.remove('is-open');
+    window.MonoMotion.closeDialog(quickActions, actionValue);
+  });
   quickActions.addEventListener('click', event => {
-    if (event.target === quickActions) quickActions.close();
+    if (event.target === quickActions) {
+      byId('dockAdd').classList.remove('is-open');
+      window.MonoMotion?.closeDialog(quickActions, 'cancel');
+    }
   });
   quickActions.addEventListener('close', () => {
+    byId('dockAdd').classList.remove('is-open');
     byId('dockAdd').focus({preventScroll:true});
     if (quickActions.returnValue === 'entry') window.MonoPanels.recordEntry();
     if (quickActions.returnValue === 'account') window.MonoPanels.editAccount();
   });
-  byId('startPersonal').onclick=()=>{closeMenu();byId('startError').textContent='';byId('startDialog').showModal()};
-  byId('cancelStart').onclick=()=>byId('startDialog').close();
+  const startDialog = byId('startDialog');
+  window.MonoMotion?.bindDialogEscape(startDialog);
+  startDialog.addEventListener('click', event => {
+    if (event.target === startDialog) window.MonoMotion?.closeDialog(startDialog);
+  });
+  byId('startPersonal').onclick=()=>{closeMenu();byId('startError').textContent='';startDialog.showModal()};
+  byId('cancelStart').onclick=()=>window.MonoMotion?.closeDialog(startDialog);
   byId('confirmStart').onclick=()=>{
     const candidate = emptyPersonalSpace(mono.hidden);
     const result = writeData(candidate);
@@ -455,9 +617,13 @@
     }
     undoState = undefined;
     acceptData(candidate);
-    byId('startDialog').close();location.hash='overview';render();
+    window.MonoMotion?.closeDialog(startDialog);location.hash='overview';render();
   };
   const resetDialog = byId('resetDialog');
+  window.MonoMotion?.bindDialogEscape(resetDialog);
+  resetDialog.addEventListener('click', event => {
+    if (event.target === resetDialog) window.MonoMotion?.closeDialog(resetDialog);
+  });
   const confirmReset = byId('confirmReset');
   let resetReadyAt = Infinity;
   let resetTimer;
@@ -479,7 +645,7 @@
     clearTimeout(resetTimer);
     updateResetCountdown();
   };
-  byId('cancelReset').onclick = () => resetDialog.close();
+  byId('cancelReset').onclick = () => window.MonoMotion?.closeDialog(resetDialog);
   resetDialog.addEventListener('close', () => {
     if (resetDialog.open) return;
     clearTimeout(resetTimer);
@@ -508,7 +674,11 @@
     history.replaceState(null, '', '#overview');
     location.reload();
   };
-  document.querySelectorAll('[data-range]').forEach(b=>b.onclick=()=>{period=b.dataset.range;render()});
+  document.querySelectorAll('[data-range]').forEach(b=>b.onclick=()=>{
+    if (period === b.dataset.range) return;
+    period=b.dataset.range;
+    render({ rangeChanged: true });
+  });
   window.addEventListener('hashchange',()=>{
     if (quickActions.open) quickActions.close();
     closeMenu();render();window.scrollTo(0,0);

@@ -10,7 +10,6 @@
 .change-button > i { color: var(--muted); }
 .change-button > i svg { width: 15px; height: 15px; }
 .change-button[aria-expanded="true"] > i { transform: rotate(180deg); }
-.change-details { margin-top: 15px; padding-top: 14px; border-top: 1px solid var(--line); }
 .change-list { margin: 5px 0 8px; padding: 0; }
 .change-list > div {
   display: grid;

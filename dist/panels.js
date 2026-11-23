@@ -46,11 +46,29 @@
     const current = node.textContent;
     if (window.mono.hidden || reducedMotion.matches || !previousText || previousText === current ||
         !/\d/.test(previousText) || !/\d/.test(current)) return;
-    // Only the final text is painted. Repeated edits replace the previous fade.
+    if (node.id === 'netValue' || node.id === 'changeValue' || node.id === 'weekAmount' ||
+        node.id === 'grossValue' || node.id === 'debtValue') return;
+    const motion = window.MonoMotion;
+    if (motion) {
+      const from = motion.parseNumeric(previousText);
+      const to = motion.parseNumeric(current);
+      if (from !== null && to !== null && !node.children.length) {
+        const prefixMatch = current.match(/^[+−-]?(¥\s?|￥\s?)?/);
+        const rawPrefix = prefixMatch ? prefixMatch[0] : '';
+        const hasSign = /^[+−-]/.test(rawPrefix);
+        const currency = rawPrefix.replace(/^[+−-]/, '');
+        if (hasSign) {
+          motion.tweenSignedText(node, from, to, { currency, forceSign: current.startsWith('+'), duration: 300 });
+        } else {
+          motion.tweenCurrencyText(node, from, to, { prefix: currency, duration: 300 });
+        }
+        return;
+      }
+    }
     for (const animation of node.getAnimations()) {
       if (animation.id === 'amount-change') animation.cancel();
     }
-    node.animate([{opacity: .66}, {opacity: 1}], {id: 'amount-change', duration: 160, easing: 'ease-out'});
+    node.animate([{opacity: .66}, {opacity: 1}], {id: 'amount-change', duration: 220, easing: 'ease-out'});
   }
   function amountLabel(tag, cls, text, key) {
     const node = el(tag, cls, text);
@@ -70,6 +88,11 @@
   };
   const blank = (text) => el('p', 'mp-empty', text);
 
+  function closeSheet(dialog) {
+    if (window.MonoMotion?.closeDialog) window.MonoMotion.closeDialog(dialog);
+    else dialog.close();
+  }
+
   function openDialog(dialog, focusFallback) {
     const opener = document.activeElement;
     const viewport = window.visualViewport;
@@ -78,6 +101,10 @@
       const bottom = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
       dialog.style.setProperty('--mp-viewport-bottom', bottom + 'px');
     }
+    window.MonoMotion?.bindDialogEscape(dialog);
+    dialog.addEventListener('click', event => {
+      if (event.target === dialog) closeSheet(dialog);
+    });
     dialog.addEventListener('close', () => {
       viewport?.removeEventListener('resize', fitSheet);
       viewport?.removeEventListener('scroll', fitSheet);
@@ -104,7 +131,7 @@
     dialog.setAttribute('aria-describedby', 'mp-batch-intro');
     const title = el('h2', '', '记收支');
     title.id = 'mp-batch-title';
-    const close = button('', 'mp-close', () => dialog.close(), 'close');
+    const close = button('', 'mp-close', () => closeSheet(dialog), 'close');
     close.setAttribute('aria-label', '关闭');
     close.autofocus = true;
     const head = el('div', 'mp-dialog-head');
@@ -154,7 +181,7 @@
     const submit = el('button', 'mp-primary', '保存更新');
     submit.type = 'submit';
     const actions = el('div', 'mp-actions');
-    actions.append(button('取消', 'mp-secondary', () => dialog.close()), submit);
+    actions.append(button('取消', 'mp-secondary', () => closeSheet(dialog)), submit);
     const footer = el('div', 'mp-batch-footer');
     footer.append(preview, feedback, actions);
     const form = el('form', 'mp-batch-form');
@@ -166,6 +193,7 @@
       const spending = mode === 'expense';
       expense.setAttribute('aria-pressed', String(spending));
       income.setAttribute('aria-pressed', String(!spending));
+      window.MonoMotion?.syncSlider(modes, spending ? expense : income);
       net.dataset.mode = mode;
       for (const {account, input} of rows) {
         let label = spending ? '支出金额' : '收入金额';
@@ -222,12 +250,13 @@
       const {changes} = collect();
       if (!dialog.open || !changes?.length) return;
       const result = window.mono.updateBalances(changes);
-      if (result.ok) dialog.close();
+      if (result.ok) closeSheet(dialog);
       else feedback.textContent = result.message || '余额未保存，请重试。';
     });
 
     selectMode('expense');
     openDialog(dialog, () => document.querySelector('.mp-update-balances'));
+    requestAnimationFrame(() => window.MonoMotion?.syncSlider(modes, expense, {instant: true}));
   }
 
   function accounts(root) {
@@ -310,7 +339,13 @@
       const pct = g.target > 0 ? Math.min(100, Math.max(0, g.saved / g.target * 100)) : 0;
       const track = el('div', 'mp-track');
       const fill = el('div', 'mp-fill');
-      fill.style.width = (window.mono.hidden ? 0 : pct) + '%';
+      const targetWidth = (window.mono.hidden ? 0 : pct) + '%';
+      if (!reducedMotion.matches && !window.mono.hidden && pct > 0) {
+        fill.style.width = '0%';
+        requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.width = targetWidth; }));
+      } else {
+        fill.style.width = targetWidth;
+      }
       track.append(fill);
       const label = el('div', 'mp-goal-progress');
       const pctLabel = window.mono.hidden ? '•••' : (pct > 99 && pct < 100 ? '99' : Math.round(pct)) + '%';
@@ -358,7 +393,7 @@
     const head = el('div', 'mp-dialog-head');
     const title = el('h2', '', (existing ? '编辑' : '添加') + label);
     title.id = 'mp-dialog-title';
-    const close = button('', 'mp-close', () => dialog.close(), 'close');
+    const close = button('', 'mp-close', () => closeSheet(dialog), 'close');
     const touchLayout = window.matchMedia('(max-width: 700px), (pointer: coarse)').matches;
     close.setAttribute('aria-label', '关闭');
     close.autofocus = touchLayout;
@@ -422,7 +457,7 @@
         choices.append(back, button('确认删除', 'mp-destructive', () => {
           const index = items.indexOf(existing);
           if (index >= 0) items.splice(index, 1);
-          dialog.close();
+          closeSheet(dialog);
           window.mono.save();
         }));
         confirm.append(choices);
@@ -430,7 +465,7 @@
         back.focus();
       }));
     }
-    footer.append(button('取消', 'mp-secondary', () => dialog.close()));
+    footer.append(button('取消', 'mp-secondary', () => closeSheet(dialog)));
     const submit = el('button', 'mp-primary', existing ? '保存更改' : '添加' + label);
     submit.type = 'submit';
     footer.append(submit);
@@ -452,7 +487,7 @@
       if (existing) Object.assign(existing, data);
       else items.push({...data, id: globalThis.crypto?.randomUUID?.() || String(Date.now()) + Math.random().toString(36).slice(2)});
       if (isAccount && accountFilter && accountFilter !== data.type) accountFilter = '';
-      dialog.close();
+      closeSheet(dialog);
       window.mono.save();
     });
     dialog.append(head, form);

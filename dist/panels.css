@@ -59,14 +59,24 @@
 }
 
 .mp-metrics {
+  position: relative;
+  overflow: hidden;
   display: grid;
   grid-template-columns: 1.24fr 1fr 1fr;
   padding: 24px 0;
   border: 1px solid var(--card-border);
-  border-radius: 24px;
-  background: var(--soft, #f5f5f5);
+  border-radius: 26px;
+  background: var(--balance-surface);
+  box-shadow: inset 0 1px 0 var(--specular-strong), var(--shadow-hero);
 }
-.mp-metric { min-width: 0; padding-inline: clamp(18px, 3.2vw, 32px); }
+.mp-metrics::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--hero-glow);
+}
+.mp-metric { position: relative; z-index: 1; min-width: 0; padding-inline: clamp(18px, 3.2vw, 32px); }
 .mp-metric + .mp-metric { border-left: 1px solid var(--line, #e8e8e8); }
 .mp-meta { color: var(--muted, #737373); font-size: .8125rem; line-height: 1.55; }
 .mp-value, .mp-account-value, .mp-goal-value, .mp-percent { font-variant-numeric: tabular-nums; }
@@ -87,6 +97,7 @@
   border: 1px solid var(--card-border);
   border-radius: 24px;
   background: var(--surface, #fff);
+  box-shadow: inset 0 1px 0 var(--specular), var(--shadow-card);
 }
 .mp-box { overflow: hidden; }
 .mp-box-head {
@@ -146,6 +157,8 @@
   height: 40px;
   border-radius: 14px;
   background: var(--soft, #f5f5f5);
+  border: 1px solid var(--line);
+  box-shadow: inset 0 1px 0 var(--specular);
   color: var(--ink, #232323);
 }
 .mp-account-icon .mp-icon { width: 20px; height: 20px; }
@@ -206,12 +219,18 @@ body:has(.mp-dialog:modal) { overflow: hidden; }
   overscroll-behavior: contain;
   padding: 22px 24px 24px;
   margin: auto;
-  border: 1px solid var(--line, #e8e8e8);
+  border: 1px solid var(--card-border);
   border-radius: 28px;
-  background: var(--surface, #fff);
-  box-shadow: var(--shadow-raised);
+  background: var(--sheet-background);
+  box-shadow: inset 0 1px 0 var(--specular-strong), var(--shadow-raised);
+  -webkit-backdrop-filter: saturate(180%) blur(26px);
+  backdrop-filter: saturate(180%) blur(26px);
 }
-.mp-dialog::backdrop { background: var(--overlay, rgb(0 0 0 / 40%)); }
+.mp-dialog::backdrop {
+  background: var(--overlay, rgb(0 0 0 / 40%));
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
 .mp-dialog-head { margin-bottom: 16px; }
 .mp-dialog-head h2 { font-size: 1.25rem; font-weight: 500; letter-spacing: -.01em; }
 .mp-close { background: var(--soft, #f5f5f5); }
@@ -285,9 +304,18 @@ body:has(.mp-dialog:modal) { overflow: hidden; }
     max-height: calc(100vh - 10px);
     max-height: calc(var(--mp-viewport-height, 100dvh) - 10px);
     margin: 0;
-    padding: 13px max(20px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+    padding: 10px max(20px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
     border-width: 1px 0 0;
     border-radius: 28px 28px 0 0;
+  }
+  .mp-dialog:not(.quick-actions)::before {
+    content: "";
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: 0 auto 10px;
+    border-radius: 99px;
+    background: var(--divider);
   }
 }
 @media (max-width: 360px) {
