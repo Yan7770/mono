@@ -50,10 +50,11 @@
     return sign + Math.abs(num).toFixed(2) + '%';
   };
 
-  const formatPrice = (value) => {
+  const formatPrice = (value, market = '') => {
     if (window.mono.hidden) return '•••';
     const num = Number(value || 0);
     if (!Number.isFinite(num) || num <= 0) return '—';
+    if (market === 'jj') return num.toFixed(4);
     // ETFs frequently quote to 3 decimal places
     const decimals = Math.abs(num * 100 - Math.round(num * 100)) > 0.001 ? 3 : 2;
     return num.toFixed(decimals);
@@ -462,17 +463,20 @@
     const fields = el('div', 'mp-fields');
 
     const codeWrap = el('label', 'mp-field');
-    codeWrap.append(el('span', '', '股票 / ETF 代码'));
+    codeWrap.append(el('span', '', '股票 / ETF / 基金代码'));
     const codeInput = el('input');
     codeInput.type = 'text';
     codeInput.inputMode = 'numeric';
     codeInput.maxLength = 10;
-    codeInput.placeholder = '输入 6 位代码，如 600519 / 000001 / 510300';
+    codeInput.placeholder = '输入 6 位代码，如 600519 / 510300 / 008163';
     codeInput.value = existing ? existing.code : '';
     codeInput.disabled = Boolean(existing);
     codeWrap.append(codeInput);
 
     const quotePill = el('div', 'inv-lookup-pill');
+    const candidateBar = el('div', 'inv-candidates');
+    candidateBar.hidden = true;
+    let lookupCandidates = [];
     let lookedUp = existing ? {
       symbol: existing.market + existing.code,
       market: existing.market,
@@ -487,23 +491,25 @@
     } : null;
 
     const sharesWrap = el('label', 'mp-field');
-    sharesWrap.append(el('span', '', '持仓股数'));
+    const sharesLabel = el('span', '', existing?.market === 'jj' ? '持有份额' : '持仓股数');
+    sharesWrap.append(sharesLabel);
     const sharesInput = el('input');
     sharesInput.type = 'number';
     sharesInput.inputMode = 'decimal';
     sharesInput.min = '0.0001';
     sharesInput.step = 'any';
-    sharesInput.placeholder = '例如 100';
+    sharesInput.placeholder = existing?.market === 'jj' ? '例如 1000.00' : '例如 100';
     sharesInput.value = existing ? String(existing.shares) : '';
     sharesWrap.append(sharesInput);
 
     const costWrap = el('label', 'mp-field');
-    costWrap.append(el('span', '', '持仓成本价（元，选填）'));
+    const costLabel = el('span', '', existing?.market === 'jj' ? '持仓成本净值（元，选填）' : '持仓成本价（元，选填）');
+    costWrap.append(costLabel);
     const costInput = el('input');
     costInput.type = 'number';
     costInput.inputMode = 'decimal';
     costInput.min = '0';
-    costInput.step = '0.001';
+    costInput.step = '0.0001';
     costInput.placeholder = '用于计算累计盈亏，可留空';
     costInput.value = existing?.costPrice != null ? String(existing.costPrice) : '';
     costWrap.append(costInput);
@@ -515,7 +521,7 @@
     const feedback = el('p', 'mp-feedback');
     feedback.setAttribute('role', 'alert');
 
-    fields.append(codeWrap, quotePill, sharesWrap, costWrap, estPreview);
+    fields.append(codeWrap, quotePill, candidateBar, sharesWrap, costWrap, estPreview);
 
     const footer = el('div', 'mp-actions');
     if (existing) {
@@ -562,44 +568,82 @@
       }
     }
 
+    function syncFieldLabels() {
+      const isFund = lookedUp?.market === 'jj';
+      sharesLabel.textContent = isFund ? '持有份额' : '持仓股数';
+      sharesInput.placeholder = isFund ? '例如 1000.00' : '例如 100';
+      costLabel.textContent = isFund ? '持仓成本净值（元，选填）' : '持仓成本价（元，选填）';
+    }
+
+    function renderCandidates() {
+      candidateBar.replaceChildren();
+      if (lookupCandidates.length <= 1) {
+        candidateBar.hidden = true;
+        return;
+      }
+      candidateBar.hidden = false;
+      lookupCandidates.forEach(item => {
+        const mkt = window.MonoServices.marketLabel(item.market, item.code);
+        const btn = el('button', 'inv-candidate-chip' + (lookedUp?.symbol === item.symbol ? ' is-selected' : ''),
+          `${mkt} · ${item.name}`);
+        btn.type = 'button';
+        btn.addEventListener('click', () => {
+          lookedUp = item;
+          renderCandidates();
+          renderLookupPill('');
+        });
+        candidateBar.append(btn);
+      });
+    }
+
     function renderLookupPill(stateText, isError = false) {
       quotePill.replaceChildren();
       quotePill.className = 'inv-lookup-pill' + (isError ? ' is-error' : lookedUp ? ' is-ready' : '');
       if (lookedUp && !stateText) {
         const mkt = window.MonoServices.marketLabel(lookedUp.market, lookedUp.code);
+        const pricePrefix = lookedUp.market === 'jj' ? '净值 ' : '¥';
         const left = el('span', 'inv-lookup-name', `${lookedUp.name} (${mkt} ${lookedUp.code})`);
         const right = el('strong', 'inv-lookup-price ' + trendClass(lookedUp.changePct),
-          `¥${formatPrice(lookedUp.price)} (${formatPct(lookedUp.changePct)})`);
+          `${pricePrefix}${formatPrice(lookedUp.price, lookedUp.market)} (${formatPct(lookedUp.changePct)})`);
         quotePill.append(left, right);
       } else {
-        quotePill.textContent = stateText || '输入 6 位代码后自动查询股票名称与最新价';
+        quotePill.textContent = stateText || '输入 6 位代码后自动识别 A 股、ETF 或场外基金';
       }
+      syncFieldLabels();
       refreshEstimate();
     }
 
     async function doLookup() {
-      const symbol = window.MonoServices.normalizeSymbol(codeInput.value);
-      if (!symbol) {
+      const candidates = window.MonoServices.candidateSymbols(codeInput.value);
+      if (!candidates.length) {
         lookedUp = null;
-        renderLookupPill(codeInput.value.trim() ? '请输入有效的 6 位沪/深/北交所代码' : '');
+        lookupCandidates = [];
+        renderCandidates();
+        renderLookupPill(codeInput.value.trim() ? '请输入有效的 6 位股票、ETF 或基金代码' : '');
         return;
       }
       const seq = ++lookupSeq;
-      renderLookupPill(`正在查询 ${symbol.toUpperCase()} 最新行情…`);
+      lookupCandidates = [];
+      renderCandidates();
+      renderLookupPill(`正在查询 ${codeInput.value.trim().toUpperCase()} 最新行情…`);
       try {
-        const res = await window.MonoServices.fetchQuotes([symbol]);
+        const res = await window.MonoServices.lookupCode(codeInput.value);
         if (seq !== lookupSeq) return;
-        const found = res.quotes?.[0];
-        if (!found) {
+        const foundList = res.quotes || [];
+        if (!foundList.length) {
           lookedUp = null;
-          renderLookupPill(`未查到 ${symbol.toUpperCase()}，请核对代码是否正确`, true);
+          renderLookupPill(`未查到 ${codeInput.value.trim().toUpperCase()}，请核对 6 位代码是否正确`, true);
           return;
         }
-        lookedUp = found;
+        lookupCandidates = foundList;
+        lookedUp = foundList[0];
+        renderCandidates();
         renderLookupPill('');
       } catch {
         if (seq !== lookupSeq) return;
         lookedUp = null;
+        lookupCandidates = [];
+        renderCandidates();
         renderLookupPill('行情查询失败，请检查网络连接', true);
       }
     }
@@ -612,6 +656,8 @@
         lookupTimer = setTimeout(doLookup, 260);
       } else {
         lookedUp = null;
+        lookupCandidates = [];
+        renderCandidates();
         renderLookupPill('');
       }
     });
@@ -628,7 +674,7 @@
       if (!existing && !lookedUp) {
         await doLookup();
         if (!lookedUp) {
-          feedback.textContent = '请先输入有效的 6 位 A 股或 ETF 代码并等待查询成功。';
+          feedback.textContent = '请先输入有效的 6 位股票、ETF 或基金代码并等待查询成功。';
           codeInput.focus();
           return;
         }
@@ -650,7 +696,7 @@
           costInput.focus();
           return;
         }
-        costPrice = Math.round(parsedCost * 1000) / 1000;
+        costPrice = Math.round(parsedCost * 10000) / 10000;
       }
 
       const nowIso = new Date().toISOString();
@@ -893,8 +939,10 @@
         );
         const priceLine = el('div', 'mp-meta inv-price-line');
         const pctTag = el('span', 'inv-inline-pct ' + trendClass(h.changePct), formatPct(h.changePct));
+        const unitLabel = h.market === 'jj' ? '份' : '股';
+        const priceLabel = h.market === 'jj' ? '净值' : '现价 ¥';
         priceLine.append(
-          document.createTextNode(`${formatShares(h.shares)} 股 · 现价 ¥${formatPrice(price)} `),
+          document.createTextNode(`${formatShares(h.shares)} ${unitLabel} · ${priceLabel}${formatPrice(price, h.market)} `),
           pctTag
         );
         left.append(nameLine, priceLine);

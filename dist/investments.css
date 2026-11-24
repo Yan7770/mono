@@ -234,6 +234,29 @@
   white-space: nowrap;
 }
 
+.inv-candidates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.inv-candidate-chip {
+  min-height: 34px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--soft);
+  color: var(--muted);
+  font-size: .8rem;
+}
+
+.inv-candidate-chip.is-selected {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+  font-weight: 500;
+}
+
 /* Settlement Log */
 .inv-log-row {
   display: flex;

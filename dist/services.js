@@ -59,15 +59,27 @@
     aiModel: AI_PRESETS[0].model
   };
 
+  function cleanWorkerUrl(url) {
+    return String(url || '').trim()
+      .replace(/\/api\/(health|quotes|kline|vision)\/?$/i, '')
+      .replace(/\/+$/, '');
+  }
+
+  function cleanAiBaseUrl(url) {
+    return String(url || '').trim()
+      .replace(/\/(chat\/completions|models)\/?$/i, '')
+      .replace(/\/+$/, '');
+  }
+
   function readConfig() {
     try {
       const raw = JSON.parse(localStorage.getItem(CONFIG_KEY) || 'null');
       if (raw && typeof raw === 'object') {
         return {
-          workerUrl: String(raw.workerUrl || '').trim().replace(/\/+$/, ''),
+          workerUrl: cleanWorkerUrl(raw.workerUrl),
           workerToken: String(raw.workerToken || '').trim(),
           aiMode: raw.aiMode === 'direct' ? 'direct' : 'worker',
-          aiBaseUrl: String(raw.aiBaseUrl || DEFAULT_CONFIG.aiBaseUrl).trim().replace(/\/+$/, ''),
+          aiBaseUrl: cleanAiBaseUrl(raw.aiBaseUrl || DEFAULT_CONFIG.aiBaseUrl),
           aiApiKey: String(raw.aiApiKey || '').trim(),
           aiModel: String(raw.aiModel || DEFAULT_CONFIG.aiModel).trim()
         };
@@ -81,10 +93,10 @@
       ...readConfig(),
       ...next
     };
-    merged.workerUrl = String(merged.workerUrl || '').trim().replace(/\/+$/, '');
+    merged.workerUrl = cleanWorkerUrl(merged.workerUrl);
     merged.workerToken = String(merged.workerToken || '').trim();
     merged.aiMode = merged.aiMode === 'direct' ? 'direct' : 'worker';
-    merged.aiBaseUrl = String(merged.aiBaseUrl || DEFAULT_CONFIG.aiBaseUrl).trim().replace(/\/+$/, '');
+    merged.aiBaseUrl = cleanAiBaseUrl(merged.aiBaseUrl || DEFAULT_CONFIG.aiBaseUrl);
     merged.aiApiKey = String(merged.aiApiKey || '').trim();
     merged.aiModel = String(merged.aiModel || DEFAULT_CONFIG.aiModel).trim();
     localStorage.setItem(CONFIG_KEY, JSON.stringify(merged));
@@ -98,17 +110,33 @@
 
   function normalizeSymbol(raw) {
     const cleaned = String(raw || '').trim().toLowerCase();
-    if (/^(sh|sz|bj)\d{6}$/.test(cleaned)) return cleaned;
+    if (/^(sh|sz|bj|jj)\d{6}$/.test(cleaned)) return cleaned;
     const digits = cleaned.replace(/\D/g, '');
     if (digits.length !== 6) return null;
     if (/^(60|68|51|56|58|50)/.test(digits)) return 'sh' + digits;
     if (/^(00|30|15|16|18|12)/.test(digits)) return 'sz' + digits;
     if (/^(4|8|92)/.test(digits)) return 'bj' + digits;
-    return 'sh' + digits;
+    return 'jj' + digits;
+  }
+
+  function candidateSymbols(raw) {
+    const cleaned = String(raw || '').trim().toLowerCase();
+    if (/^(sh|sz|bj|jj)\d{6}$/.test(cleaned)) return [cleaned];
+    const digits = cleaned.replace(/\D/g, '');
+    if (digits.length !== 6) return [];
+    const list = [];
+    if (/^(60|68|51|56|58|50)/.test(digits)) list.push('sh' + digits);
+    else if (/^(00|30|15|16|18|12)/.test(digits)) list.push('sz' + digits);
+    else if (/^(4|8|92)/.test(digits)) list.push('bj' + digits);
+    else list.push('sh' + digits, 'sz' + digits);
+    // Always also check Chinese open-end mutual fund (场外基金) prefix `jj`
+    list.push('jj' + digits);
+    return [...new Set(list)];
   }
 
   function marketLabel(symbolOrMarket, code = '') {
     const market = String(symbolOrMarket || '').slice(0, 2).toLowerCase();
+    if (market === 'jj') return '基金';
     const digits = String(code || symbolOrMarket || '').replace(/\D/g, '');
     if (/^(51|56|58|50|15|16|18)/.test(digits)) return 'ETF';
     if (market === 'sh') return '沪A';
@@ -184,6 +212,37 @@
       if (!match || !match[2]) continue;
       const symbol = match[1];
       const parts = match[2].split('~');
+
+      // Open-end mutual fund (场外基金): v_jj008163="code~name~estNav~estPct~estTime~nav~accNav~dayPct~navDate~"
+      if (symbol.startsWith('jj')) {
+        if (parts.length < 9 || !parts[1]) continue;
+        const nav = Number(parts[5]);
+        const estNav = Number(parts[2]);
+        const dayPct = Number(parts[7]);
+        const price = Number.isFinite(nav) && nav > 0 ? nav : (Number.isFinite(estNav) && estNav > 0 ? estNav : 0);
+        if (price <= 0) continue;
+        const pct = Number.isFinite(dayPct) ? dayPct : 0;
+        const prevClose = pct > -99.9 ? Math.round((price / (1 + pct / 100)) * 10000) / 10000 : price;
+        const change = Math.round((price - prevClose) * 10000) / 10000;
+        const quoteDate = /^\d{4}-\d{2}-\d{2}$/.test(String(parts[8] || '').trim()) ? parts[8].trim() : '';
+        quotes.push({
+          symbol,
+          market: 'jj',
+          code: parts[0] || symbol.slice(2),
+          name: parts[1].trim(),
+          price,
+          prevClose,
+          open: prevClose,
+          change,
+          changePct: Math.round(pct * 100) / 100,
+          quoteDate,
+          quoteTime: '',
+          suspended: false,
+          assetKind: 'fund'
+        });
+        continue;
+      }
+
       if (parts.length < 35 || !parts[1]) continue;
       const price = Number(parts[3]);
       const prevClose = Number(parts[4]);
@@ -205,7 +264,8 @@
         changePct: Number.isFinite(changePct) ? changePct : (prevClose > 0 ? Math.round((effectivePrice - prevClose) / prevClose * 10000) / 100 : 0),
         quoteDate,
         quoteTime,
-        suspended
+        suspended,
+        assetKind: 'stock'
       });
     }
     return quotes;
@@ -264,7 +324,17 @@
     return fetchQuotesDirect(symbols);
   }
 
+  async function lookupCode(raw) {
+    const candidates = candidateSymbols(raw);
+    if (!candidates.length) return { quotes: [] };
+    return fetchQuotes(candidates);
+  }
+
   async function fetchKlineDirect(symbol, days = 30) {
+    if (symbol.startsWith('jj')) {
+      // Mutual fund daily history requires Worker (EastMoney pingzhongdata has no CORS)
+      return { symbol, bars: [], source: 'direct' };
+    }
     const res = await fetchWithTimeout(`${TENCENT_KLINE_BASE}?param=${symbol},day,,,${days},`, {}, 10000);
     if (!res.ok) throw new Error('历史收盘价接口请求失败');
     const payload = await res.json();
@@ -328,7 +398,7 @@ ${accountLines}
   }
 
   function parseJsonFromText(rawText) {
-    const text = String(rawText || '').trim();
+    const text = String(rawText || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
     const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
     const candidate = fenced ? fenced[1].trim() : text;
     try {
@@ -337,8 +407,39 @@ ${accountLines}
       const start = candidate.indexOf('{');
       const end = candidate.lastIndexOf('}');
       if (start >= 0 && end > start) return JSON.parse(candidate.slice(start, end + 1));
-      throw new Error('AI 返回内容无法解析，请更换清晰截图重试。');
+      throw new Error('AI 返回内容无法解析为账单 JSON，请更换清晰截图重试。');
     }
+  }
+
+  function explainVisionError(status, rawMessage, modelName = '') {
+    const msg = String(rawMessage || '');
+    const lower = msg.toLowerCase();
+    if (lower.includes('image_url') || lower.includes('does not support image') || lower.includes('multimodal') || lower.includes('vision')) {
+      return `模型「${modelName || '当前模型'}」不支持图片输入。如使用 DeepSeek 请将模型名设为 deepseek-flash（不要用 deepseek-chat / deepseek-reasoner）。`;
+    }
+    if (status === 401 || lower.includes('invalid api') || lower.includes('authentication') || lower.includes('unauthorized')) {
+      return 'API Key 无效或已过期，请在「AI 与行情设置」中核对 Key。';
+    }
+    if (status === 402 || lower.includes('insufficient balance') || lower.includes('quota')) {
+      return 'API 账户余额不足或额度已用尽，请前往模型平台充值。';
+    }
+    if (status === 404 || lower.includes('model not exist') || lower.includes('does not exist')) {
+      return `接口地址或模型名「${modelName}」不存在（HTTP 404），请检查 Base URL（勿重复带 /chat/completions）和模型名称。`;
+    }
+    return msg || `AI 接口返回错误（HTTP ${status || '未知'}）`;
+  }
+
+  function explainNetworkError(err, isWorker) {
+    if (err?.name === 'AbortError') {
+      return '识别请求超时（超过 90 秒），请裁切较短的单张账单截图后重试。';
+    }
+    const msg = String(err?.message || '');
+    if (err instanceof TypeError || /failed to fetch|load failed|network/i.test(msg)) {
+      return isWorker
+        ? '无法连接到你的 Cloudflare Worker，请检查 Worker 地址是否正确及网络是否正常。'
+        : '浏览器直连 AI 接口被跨域（CORS）拦截或网络不可达，请检查接口地址，或部署 Cloudflare Worker 代理。';
+    }
+    return msg || '识图请求失败，请稍后重试。';
   }
 
   function normalizeVisionResult(parsed, fallbackDate) {
@@ -374,21 +475,26 @@ ${accountLines}
     }
 
     if (cfg.aiMode === 'worker') {
-      const res = await fetchWithTimeout(`${cfg.workerUrl}/api/vision`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...authHeaders(cfg)
-        },
-        body: JSON.stringify({
-          images,
-          today,
-          accounts: accounts.map(({ id, name, bank, type }) => ({ id, name, bank, type }))
-        })
-      }, 45000);
+      let res;
+      try {
+        res = await fetchWithTimeout(`${cfg.workerUrl}/api/vision`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...authHeaders(cfg)
+          },
+          body: JSON.stringify({
+            images,
+            today,
+            accounts: accounts.map(({ id, name, bank, type }) => ({ id, name, bank, type }))
+          })
+        }, 90000);
+      } catch (err) {
+        throw new Error(explainNetworkError(err, true));
+      }
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        throw new Error(data?.error || `识图服务返回错误（${res.status}）`);
+        throw new Error(explainVisionError(res.status, data?.error, 'Worker 模型'));
       }
       return normalizeVisionResult(data, today);
     }
@@ -399,33 +505,44 @@ ${accountLines}
     for (const dataUrl of images) {
       content.push({ type: 'image_url', image_url: { url: dataUrl } });
     }
-    const res = await fetchWithTimeout(`${cfg.aiBaseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${cfg.aiApiKey}`
-      },
-      body: JSON.stringify({
-        model: cfg.aiModel,
-        temperature: 0.1,
-        max_tokens: 2048,
-        messages: [{ role: 'user', content }]
-      })
-    }, 45000);
+    let res;
+    try {
+      res = await fetchWithTimeout(`${cfg.aiBaseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${cfg.aiApiKey}`
+        },
+        body: JSON.stringify({
+          model: cfg.aiModel,
+          temperature: 0.1,
+          max_tokens: 2048,
+          messages: [{ role: 'user', content }]
+        })
+      }, 90000);
+    } catch (err) {
+      throw new Error(explainNetworkError(err, false));
+    }
     const payload = await res.json().catch(() => null);
     if (!res.ok) {
-      const msg = payload?.error?.message || payload?.message || `AI 接口返回 ${res.status}`;
-      throw new Error(msg);
+      const msg = payload?.error?.message || payload?.message || '';
+      throw new Error(explainVisionError(res.status, msg, cfg.aiModel));
     }
     const rawText = payload?.choices?.[0]?.message?.content;
     const text = Array.isArray(rawText) ? rawText.map(p => p?.text || '').join('\n') : String(rawText || '');
     return normalizeVisionResult(parseJsonFromText(text), today);
   }
 
+  const TEST_PIXEL_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC';
+
   async function testConnection(overrideConfig) {
     const cfg = overrideConfig ? { ...readConfig(), ...overrideConfig } : readConfig();
-    cfg.workerUrl = String(cfg.workerUrl || '').trim().replace(/\/+$/, '');
+    cfg.workerUrl = cleanWorkerUrl(cfg.workerUrl);
     cfg.workerToken = String(cfg.workerToken || '').trim();
+    cfg.aiBaseUrl = cleanAiBaseUrl(cfg.aiBaseUrl);
+    cfg.aiModel = String(cfg.aiModel || '').trim();
+    cfg.aiApiKey = String(cfg.aiApiKey || '').trim();
+
     if (cfg.aiMode === 'worker') {
       if (!cfg.workerUrl) return { ok: false, message: '请先填写 Cloudflare Worker 地址。' };
       try {
@@ -441,34 +558,47 @@ ${accountLines}
           : 'Worker 已连通，但尚未配置 AI_API_KEY';
         return { ok: true, message: `连接成功 · ${aiText}`, data };
       } catch (err) {
-        return { ok: false, message: '无法连接到 Worker，请检查地址是否正确或网络是否畅通。' };
+        return { ok: false, message: explainNetworkError(err, true) };
       }
     }
 
-    // Direct mode quick check: verify A-share direct quotes + basic config completeness
     if (!cfg.aiBaseUrl || !cfg.aiApiKey || !cfg.aiModel) {
       return { ok: false, message: '直连模式请填写完整的接口地址、API Key 和模型名称。' };
     }
     try {
-      const res = await fetchWithTimeout(`${cfg.aiBaseUrl}/models`, {
-        headers: { 'Authorization': `Bearer ${cfg.aiApiKey}` }
-      }, 10000);
-      if (res.ok || res.status === 404) {
-        return { ok: true, message: '直连地址可访问（部分接口不支持 /models，实际识图时自动验证）。' };
+      const res = await fetchWithTimeout(`${cfg.aiBaseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${cfg.aiApiKey}`
+        },
+        body: JSON.stringify({
+          model: cfg.aiModel,
+          max_tokens: 16,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'text', text: 'OK' },
+              { type: 'image_url', image_url: { url: TEST_PIXEL_DATA_URL } }
+            ]
+          }]
+        })
+      }, 20000);
+      const payload = await res.json().catch(() => null);
+      if (res.ok) {
+        return { ok: true, message: `测试通过！模型「${cfg.aiModel}」已验证支持识图记账。` };
       }
-      if (res.status === 401 || res.status === 403) {
-        return { ok: false, message: 'API Key 校验未通过，请检查 Key 是否有效。' };
-      }
-      return { ok: false, message: `接口返回状态 ${res.status}，请确认是否支持浏览器跨域（CORS）。` };
-    } catch {
-      return { ok: false, message: '直连接口被跨域拦截或无法访问，建议使用 Cloudflare Worker 代理模式。' };
+      const rawMsg = payload?.error?.message || payload?.message || '';
+      return { ok: false, message: explainVisionError(res.status, rawMsg, cfg.aiModel) };
+    } catch (err) {
+      return { ok: false, message: explainNetworkError(err, false) };
     }
   }
 
   function compressImage(file, { maxEdge = 1280, quality = 0.82 } = {}) {
     return new Promise((resolve, reject) => {
-      if (!file || !String(file.type || '').startsWith('image/')) {
-        reject(new Error('请选择图片文件。'));
+      if (!file || (file.type && !String(file.type).startsWith('image/'))) {
+        reject(new Error('请选择图片文件（JPG / PNG / WebP）。'));
         return;
       }
       const reader = new FileReader();
@@ -511,6 +641,8 @@ ${accountLines}
     saveConfig,
     hasVisionReady,
     normalizeSymbol,
+    candidateSymbols,
+    lookupCode,
     marketLabel,
     beijingNow,
     isDateSettledNow,

@@ -118,7 +118,7 @@
   }
 
   function holding(value) {
-    const market = ['sh', 'sz', 'bj'].includes(value.market) ? value.market : 'sh';
+    const market = ['sh', 'sz', 'bj', 'jj'].includes(value.market) ? value.market : 'sh';
     check(typeof value.code === 'string' && /^\d{6}$/.test(value.code), '备份包含无效股票代码。');
     const shares = Number(value.shares);
     check(Number.isFinite(shares) && shares > 0 && shares <= 999999999, '备份包含无效持仓股数。');
@@ -155,7 +155,7 @@
             .map(p => ({
               symbol: String(p.symbol || ((p.market || 'sh') + p.code)),
               code: String(p.code),
-              market: ['sh', 'sz', 'bj'].includes(p.market) ? p.market : 'sh',
+              market: ['sh', 'sz', 'bj', 'jj'].includes(p.market) ? p.market : 'sh',
               shares: Math.round(Number(p.shares) * 10000) / 10000
             }))
         }))

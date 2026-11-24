@@ -56,13 +56,13 @@ function checkAuth(request, env) {
 
 function normalizeSymbol(raw) {
   const cleaned = String(raw || '').trim().toLowerCase();
-  if (/^(sh|sz|bj)\d{6}$/.test(cleaned)) return cleaned;
+  if (/^(sh|sz|bj|jj)\d{6}$/.test(cleaned)) return cleaned;
   const digits = cleaned.replace(/\D/g, '');
   if (digits.length !== 6) return null;
   if (/^(60|68|51|56|58|50)/.test(digits)) return 'sh' + digits;
   if (/^(00|30|15|16|18|12)/.test(digits)) return 'sz' + digits;
   if (/^(4|8|92)/.test(digits)) return 'bj' + digits;
-  return 'sh' + digits;
+  return 'jj' + digits;
 }
 
 function formatQuoteTimestamp(raw) {
@@ -105,6 +105,37 @@ async function handleQuotes(url, request, env) {
     if (!match || !match[2]) continue;
     const symbol = match[1];
     const parts = match[2].split('~');
+
+    // Open-end mutual fund (场外基金): v_jj008163="code~name~estNav~estPct~estTime~nav~accNav~dayPct~navDate~"
+    if (symbol.startsWith('jj')) {
+      if (parts.length < 9 || !parts[1]) continue;
+      const nav = Number(parts[5]);
+      const estNav = Number(parts[2]);
+      const dayPct = Number(parts[7]);
+      const price = Number.isFinite(nav) && nav > 0 ? nav : (Number.isFinite(estNav) && estNav > 0 ? estNav : 0);
+      if (price <= 0) continue;
+      const pct = Number.isFinite(dayPct) ? dayPct : 0;
+      const prevClose = pct > -99.9 ? Math.round((price / (1 + pct / 100)) * 10000) / 10000 : price;
+      const change = Math.round((price - prevClose) * 10000) / 10000;
+      const quoteDate = /^\d{4}-\d{2}-\d{2}$/.test(String(parts[8] || '').trim()) ? parts[8].trim() : '';
+      quotes.push({
+        symbol,
+        market: 'jj',
+        code: parts[0] || symbol.slice(2),
+        name: parts[1].trim(),
+        price,
+        prevClose,
+        open: prevClose,
+        change,
+        changePct: Math.round(pct * 100) / 100,
+        quoteDate,
+        quoteTime: '',
+        suspended: false,
+        assetKind: 'fund'
+      });
+      continue;
+    }
+
     if (parts.length < 35 || !parts[1]) continue;
 
     const price = Number(parts[3]);
@@ -128,7 +159,8 @@ async function handleQuotes(url, request, env) {
       changePct: Number.isFinite(changePct) ? changePct : (prevClose > 0 ? Math.round((effectivePrice - prevClose) / prevClose * 10000) / 100 : 0),
       quoteDate,
       quoteTime,
-      suspended
+      suspended,
+      assetKind: 'stock'
     });
   }
 
@@ -140,6 +172,32 @@ async function handleKline(url, request, env) {
   const days = Math.max(2, Math.min(120, Number(url.searchParams.get('days')) || 30));
   if (!symbol) {
     return jsonResponse({ error: '无效的证券代码。' }, 400, request, env);
+  }
+
+  // Open-end mutual fund historical NAVs from EastMoney pingzhongdata
+  if (symbol.startsWith('jj')) {
+    const code = symbol.slice(2);
+    const upstream = await fetch(`https://fund.eastmoney.com/pingzhongdata/${code}.js`, {
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://fund.eastmoney.com/' }
+    });
+    if (!upstream.ok) {
+      return jsonResponse({ symbol, bars: [] }, 200, request, env);
+    }
+    const jsText = await upstream.text();
+    const match = jsText.match(/var\s+Data_netWorthTrend\s*=\s*(\[[\s\S]*?\]);/);
+    let bars = [];
+    if (match) {
+      try {
+        const trend = JSON.parse(match[1]);
+        bars = trend.slice(-days).map(pt => {
+          const d = new Date(Number(pt.x) + 8 * 3600000);
+          const date = d.toISOString().slice(0, 10);
+          const close = Number(pt.y);
+          return { date, open: close, close, high: close, low: close };
+        }).filter(b => /^\d{4}-\d{2}-\d{2}$/.test(b.date) && Number.isFinite(b.close) && b.close > 0);
+      } catch {}
+    }
+    return jsonResponse({ symbol, bars }, 200, request, env);
   }
 
   const upstream = await fetch(`${TENCENT_KLINE_BASE}?param=${symbol},day,,,${days},`, {
@@ -207,7 +265,7 @@ ${accountLines}
 }
 
 function parseJsonFromText(rawText) {
-  const text = String(rawText || '').trim();
+  const text = String(rawText || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const candidate = fenced ? fenced[1].trim() : text;
   try {
