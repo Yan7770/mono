@@ -99,19 +99,105 @@
     return entry;
   }
 
+  function transaction(value) {
+    const type = value.type === 'income' ? 'income' : 'expense';
+    const source = value.source === 'image' ? 'image' : 'manual';
+    const item = {
+      id: itemId(value.id),
+      date: calendarDate(value.date),
+      type,
+      amount: amount(value.amount, { min: .01 }),
+      title: shortText(value.title),
+      accountId: itemId(String(value.accountId)),
+      accountName: shortText(value.accountName ?? '', true),
+      source,
+      createdAt: timestamp(value.createdAt)
+    };
+    if (value.note != null) item.note = shortText(String(value.note), true);
+    return item;
+  }
+
+  function holding(value) {
+    const market = ['sh', 'sz', 'bj'].includes(value.market) ? value.market : 'sh';
+    check(typeof value.code === 'string' && /^\d{6}$/.test(value.code), '备份包含无效股票代码。');
+    const shares = Number(value.shares);
+    check(Number.isFinite(shares) && shares > 0 && shares <= 999999999, '备份包含无效持仓股数。');
+    const item = {
+      id: itemId(value.id),
+      code: value.code,
+      market,
+      name: shortText(value.name),
+      shares: Math.round(shares * 10000) / 10000,
+      costPrice: value.costPrice == null || value.costPrice === '' ? null : Number(value.costPrice),
+      lastPrice: Number.isFinite(Number(value.lastPrice)) && Number(value.lastPrice) >= 0 ? Number(value.lastPrice) : 0,
+      prevClose: Number.isFinite(Number(value.prevClose)) && Number(value.prevClose) >= 0 ? Number(value.prevClose) : 0,
+      change: Number.isFinite(Number(value.change)) ? Number(value.change) : 0,
+      changePct: Number.isFinite(Number(value.changePct)) ? Number(value.changePct) : 0,
+      quoteDate: typeof value.quoteDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.quoteDate) ? value.quoteDate : '',
+      quoteTime: typeof value.quoteTime === 'string' ? value.quoteTime.slice(0, 16) : ''
+    };
+    if (value.updatedAt != null) item.updatedAt = timestamp(value.updatedAt);
+    return item;
+  }
+
+  function normalizeInvestments(value) {
+    if (!value || typeof value !== 'object') {
+      return { accountId: null, holdings: [], holdingsTimeline: [], lastSettledDate: null, lastSyncAt: null, settlements: [] };
+    }
+    const holdings = Array.isArray(value.holdings) ? list(value.holdings, holding, 'id') : [];
+    const holdingsTimeline = Array.isArray(value.holdingsTimeline)
+      ? value.holdingsTimeline
+        .filter(e => e && /^\d{4}-\d{2}-\d{2}$/.test(e.date) && Array.isArray(e.positions))
+        .map(e => ({
+          date: e.date,
+          positions: e.positions
+            .filter(p => p && /^\d{6}$/.test(String(p.code || '')) && Number(p.shares) > 0)
+            .map(p => ({
+              symbol: String(p.symbol || ((p.market || 'sh') + p.code)),
+              code: String(p.code),
+              market: ['sh', 'sz', 'bj'].includes(p.market) ? p.market : 'sh',
+              shares: Math.round(Number(p.shares) * 10000) / 10000
+            }))
+        }))
+      : [];
+    const settlements = Array.isArray(value.settlements)
+      ? value.settlements
+        .filter(s => s && /^\d{4}-\d{2}-\d{2}$/.test(s.date) && Number.isFinite(Number(s.marketValue)))
+        .slice(0, 90)
+        .map(s => ({
+          date: s.date,
+          marketValue: Math.round(Number(s.marketValue) * 100) / 100,
+          dayPnl: Number.isFinite(Number(s.dayPnl)) ? Math.round(Number(s.dayPnl) * 100) / 100 : 0,
+          dayPnlPct: Number.isFinite(Number(s.dayPnlPct)) ? Math.round(Number(s.dayPnlPct) * 100) / 100 : 0,
+          settledAt: typeof s.settledAt === 'string' ? s.settledAt : new Date().toISOString(),
+          backfilled: Boolean(s.backfilled)
+        }))
+      : [];
+    return {
+      accountId: value.accountId ? itemId(String(value.accountId)) : null,
+      holdings,
+      holdingsTimeline,
+      lastSettledDate: value.lastSettledDate ? calendarDate(value.lastSettledDate) : null,
+      lastSyncAt: value.lastSyncAt ? timestamp(value.lastSyncAt) : null,
+      settlements
+    };
+  }
+
   function readBackup(value) {
     const backup = record(value);
-    check(backup.version === 1, '当前版本无法读取此备份格式。');
-    const { accounts, goals, hidden, edited, personal, snapshots } = record(backup.data);
+    check(backup.version === 1 || backup.version === 2, '当前版本无法读取此备份格式。');
+    const { accounts, goals, hidden, edited, personal, snapshots, transactions, investments } = record(backup.data);
     check([hidden, edited, personal].every(flag => typeof flag === 'boolean'), '备份缺少有效的空间设置。');
     return {
-      version: 1,
+      version: 2,
       createdAt: timestamp(backup.createdAt),
       data: {
         accounts: list(accounts, account, 'id'),
         goals: list(goals, goal, 'id'),
         hidden, edited, personal,
-        snapshots: list(snapshots, snapshot, 'date').sort((a, b) => a.date.localeCompare(b.date))
+        snapshots: list(snapshots, snapshot, 'date').sort((a, b) => a.date.localeCompare(b.date)),
+        transactions: Array.isArray(transactions) ? list(transactions, transaction, 'id') : [],
+        investments: normalizeInvestments(investments)
       }
     };
   }
@@ -212,6 +298,8 @@
         ['备份记录', '第 ' + entry.id + ' 次'],
         ['资产空间', entry.personal ? '个人资产' : '体验空间'],
         ['资产账户', String(entry.accountCount)],
+        ['A 股持仓', String(entry.holdingCount || 0)],
+        ['收支流水', String(entry.txCount || 0)],
         ['财富目标', String(entry.goalCount)]
       ];
       for (const [label, value] of rows) details.append(element('dt', '', label), element('dd', '', value));

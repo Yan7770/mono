@@ -1,0 +1,286 @@
+/* A-Share Investments Page (Red-Up / Green-Down Chinese Market Convention) */
+
+:root {
+  --stock-up: #f06a65;
+  --stock-up-bg: rgba(240, 106, 101, .14);
+  --stock-down: #4cc38a;
+  --stock-down-bg: rgba(76, 195, 138, .14);
+}
+
+:root[data-theme="light"] {
+  --stock-up: #c9332b;
+  --stock-up-bg: rgba(201, 51, 43, .10);
+  --stock-down: #18804e;
+  --stock-down-bg: rgba(24, 128, 78, .10);
+}
+
+.inv-head-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.inv-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--muted);
+  font-size: .78rem;
+  font-weight: 500;
+}
+
+.inv-status-pill.is-live {
+  background: var(--stock-up-bg);
+  color: var(--stock-up);
+}
+
+.inv-status-pill.is-live::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.inv-status-pill.is-settled {
+  background: var(--stock-down-bg);
+  color: var(--stock-down);
+}
+
+.inv-sub-pct {
+  margin-top: 4px;
+  font-size: .84rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.is-up { color: var(--stock-up); }
+.is-down { color: var(--stock-down); }
+.is-flat { color: var(--muted); }
+
+.inv-banner {
+  padding: 11px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--soft);
+  color: var(--secondary-ink);
+  font-size: .875rem;
+}
+
+.inv-banner.is-error {
+  border-color: var(--stock-up-bg);
+  background: var(--stock-up-bg);
+  color: var(--stock-up);
+}
+
+.inv-link-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 18px;
+  border: 1px solid var(--card-border);
+  background: var(--surface);
+  font-size: .875rem;
+  color: var(--muted);
+}
+
+.inv-link-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.inv-link-left .mp-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.inv-link-select {
+  min-height: 38px;
+  padding-block: 5px;
+  font-size: .875rem;
+  margin-right: auto;
+}
+
+.inv-mobile-refresh {
+  display: none;
+  min-height: 38px;
+  padding: 6px 12px;
+  font-size: .82rem;
+}
+
+.inv-empty-state {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  padding-bottom: 22px;
+}
+
+.inv-empty-state .mp-primary {
+  margin-left: 20px;
+}
+
+.inv-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 76px;
+  padding: 13px clamp(18px, 3vw, 30px);
+  text-align: left;
+  color: var(--ink);
+}
+
+.inv-row + .inv-row {
+  border-top: 1px solid var(--line);
+}
+
+.inv-row:hover {
+  background: var(--soft);
+}
+
+.inv-row-left {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.inv-name-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.inv-name-line strong {
+  font-size: .96rem;
+  font-weight: 500;
+}
+
+.inv-code-tag {
+  font-size: .72rem;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.inv-price-line {
+  font-variant-numeric: tabular-nums;
+}
+
+.inv-inline-pct {
+  font-weight: 500;
+}
+
+.inv-row-right {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.inv-row-mv {
+  font-size: .96rem;
+  font-weight: 500;
+}
+
+.inv-row-pnl {
+  font-size: .82rem;
+  font-weight: 500;
+}
+
+.inv-row-cum {
+  font-size: .75rem;
+  opacity: .9;
+}
+
+.inv-lookup-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  padding: 9px 13px;
+  border-radius: 14px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  font-size: .85rem;
+  color: var(--muted);
+}
+
+.inv-lookup-pill.is-ready {
+  color: var(--ink);
+  border-color: var(--divider);
+}
+
+.inv-lookup-pill.is-error {
+  color: var(--stock-up);
+  background: var(--stock-up-bg);
+  border-color: transparent;
+}
+
+.inv-lookup-price {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Settlement Log */
+.inv-log-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px clamp(18px, 3vw, 30px);
+  font-size: .875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.inv-log-row + .inv-log-row {
+  border-top: 1px solid var(--line);
+}
+
+.inv-log-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inv-log-left strong {
+  font-weight: 500;
+}
+
+.inv-log-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.inv-log-pnl {
+  font-weight: 500;
+  font-size: .84rem;
+}
+
+@media (max-width: 700px) {
+  .inv-refresh-btn { display: none; }
+  .inv-mobile-refresh { display: inline-flex; }
+  .inv-link-strip { flex-wrap: wrap; padding: 10px 12px; }
+  .inv-row,
+  .inv-log-row { padding-inline: 14px; }
+  .inv-log-right {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+  }
+}

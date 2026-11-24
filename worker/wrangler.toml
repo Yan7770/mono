@@ -1,0 +1,15 @@
+name = "mono-api"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+[vars]
+# 默认兼容 OpenAI 接口协议（通义千问 / 智谱 / 硅基流动 / OpenRouter / Gemini / OpenAI 通用）
+# 若使用 Claude 原生接口，将 AI_API_FORMAT 改为 "anthropic"
+AI_API_FORMAT = "openai"
+AI_API_BASE = "https://api.deepseek.com"
+AI_MODEL = "deepseek-flash"
+ALLOWED_ORIGIN = "*"
+
+# 请通过命令或 Cloudflare 后台加密配置以下敏感密钥（勿提交到 Git）：
+# npx wrangler secret put AI_API_KEY
+# npx wrangler secret put ACCESS_TOKEN   # 可选：个人访问口令，防止他人盗用你的接口

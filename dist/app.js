@@ -7,6 +7,9 @@
     target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
     plus:'<path d="M12 5v14M5 12h14"/>',
     entry:'<path d="M7 4v13m-4-4 4 4 4-4m6 7V7m-4 4 4-4 4 4"/>',
+    scan:'<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M4 16v2a2 2 0 0 0 2 2h2M16 20h2a2 2 0 0 0 2-2v-2"/><path d="M7 12h10"/>',
+    chart:'<path d="M4 19h16M6 15l4-4 3 2.5 5-6.5"/><path d="M15 7h3v3"/>',
+    settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.82-.33 1.7 1.7 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.51 1.7 1.7 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .33-1.82 1.7 1.7 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.51-1 1.7 1.7 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.82.33H9a1.7 1.7 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.51 1.7 1.7 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.33 1.82V9a1.7 1.7 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z"/>',
     archive:'<rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v11h14V9m-10 4h6"/>',
     restore:'<path d="M3 5v5h5M3.8 9a8.5 8.5 0 1 1 .6 7M12 7v5l3 2"/>',
     trash:'<path d="M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7"/>',
@@ -42,6 +45,25 @@
     goals:[{id:'safety',name:'家庭应急储备',target:500000,saved:326580},{id:'travel',name:'环球旅行',target:200000,saved:96000},{id:'pension',name:'退休储备',target:10000000,saved:3850000}],
     hidden:false,edited:false
   };
+  const defaultInvestments = () => ({
+    accountId: null,
+    holdings: [],
+    holdingsTimeline: [],
+    lastSettledDate: null,
+    lastSyncAt: null,
+    settlements: []
+  });
+  function normalizeInvestments(raw) {
+    if (!raw || typeof raw !== 'object') return defaultInvestments();
+    return {
+      accountId: raw.accountId ? String(raw.accountId) : null,
+      holdings: Array.isArray(raw.holdings) ? raw.holdings : [],
+      holdingsTimeline: Array.isArray(raw.holdingsTimeline) ? raw.holdingsTimeline : [],
+      lastSettledDate: typeof raw.lastSettledDate === 'string' ? raw.lastSettledDate : null,
+      lastSyncAt: typeof raw.lastSyncAt === 'string' ? raw.lastSyncAt : null,
+      settlements: Array.isArray(raw.settlements) ? raw.settlements : []
+    };
+  }
   const key = 'mono.private-wealth.v1';
   const demoDate = '2026-11-21';
   const maxBalance = 99999999999.99;
@@ -55,11 +77,13 @@
         return {
           accounts: stored.accounts, goals: stored.goals, hidden: !!stored.hidden,
           edited: !!stored.edited, personal: !!stored.personal,
-          snapshots: Array.isArray(stored.snapshots) ? stored.snapshots : []
+          snapshots: Array.isArray(stored.snapshots) ? stored.snapshots : [],
+          transactions: Array.isArray(stored.transactions) ? stored.transactions : [],
+          investments: normalizeInvestments(stored.investments)
         };
       }
     } catch {}
-    return {...copy(seed), personal:false, snapshots:[]};
+    return {...copy(seed), personal:false, snapshots:[], transactions:[], investments:defaultInvestments()};
   }
   const today = () => {
     const d = new Date();
@@ -91,7 +115,7 @@
       }
       render();
     },
-    updateBalances(changes) {
+    updateBalances(changes, options = {}) {
       const edits = new Map(changes.map(({id,balance}) => [String(id),balance]));
       const existing = new Set(this.accounts.map(account => String(account.id)));
       for (const [id,balance] of edits) {
@@ -107,14 +131,90 @@
       if (accounts.every((account,index) => account === this.accounts[index])) {
         return {ok:false, message:'请填写至少一个有变化的余额。'};
       }
-      const previous = {accounts:copy(this.accounts), snapshots:this.snapshots, edited:this.edited};
+      const previous = {
+        accounts: copy(this.accounts),
+        snapshots: copy(this.snapshots),
+        transactions: copy(this.transactions),
+        edited: this.edited
+      };
       const candidate = withAccountHistory(accounts);
+      const addedTxs = Array.isArray(options.transactions) ? options.transactions : [];
+      if (addedTxs.length) {
+        candidate.transactions = [...addedTxs, ...candidate.transactions].slice(0, 500);
+      }
       const result = writeData(candidate);
       if (result.ok) {
         acceptData(candidate);
-        undoState = previous;
+        undoState = options.recordUndo === false ? undefined : previous;
         render();
       }
+      return result;
+    },
+    deleteTransaction(id) {
+      const next = this.transactions.filter(item => String(item.id) !== String(id));
+      if (next.length === this.transactions.length) return {ok:false, message:'该流水记录已不存在。'};
+      const candidate = {...currentData(), transactions: next, edited: true};
+      const result = writeData(candidate);
+      if (result.ok) {
+        acceptData(candidate);
+        render();
+      }
+      return result;
+    },
+    syncInvestmentState({ investments, syncedBalance, createAccountIfMissing = false, backfilledSnapshots = [], snapshotDate } = {}) {
+      let accounts = copy(this.accounts);
+      const nextInv = normalizeInvestments(investments || this.investments);
+      let linked = nextInv.accountId
+        ? accounts.find(a => String(a.id) === String(nextInv.accountId))
+        : null;
+
+      if (!linked && createAccountIfMissing && nextInv.holdings.length > 0) {
+        const newId = globalThis.crypto?.randomUUID?.() || 'inv_' + Date.now();
+        linked = {
+          id: newId,
+          name: 'A股持仓',
+          bank: '证券账户',
+          type: '投资资产',
+          balance: 0,
+          updatedAt: new Date().toISOString()
+        };
+        accounts.push(linked);
+        nextInv.accountId = newId;
+      }
+
+      if (linked && Number.isFinite(syncedBalance) && syncedBalance >= 0 && syncedBalance <= maxBalance) {
+        const rounded = Math.round(syncedBalance * 100) / 100;
+        if (linked.balance !== rounded) {
+          linked.balance = rounded;
+          linked.updatedAt = new Date().toISOString();
+        }
+      }
+
+      // Build candidate with current account history
+      const base = withAccountHistory(accounts, snapshotDate);
+      base.investments = nextInv;
+
+      // Merge any historical backfilled snapshots cleanly by date
+      if (Array.isArray(backfilledSnapshots) && backfilledSnapshots.length) {
+        const map = new Map(base.snapshots.map(s => [s.date, s]));
+        for (const snap of backfilledSnapshots) {
+          if (snap?.date && Number.isFinite(snap.net)) {
+            const existingSnap = map.get(snap.date);
+            map.set(snap.date, existingSnap?.opening ? { ...snap, opening: existingSnap.opening } : snap);
+          }
+        }
+        base.snapshots = Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+      }
+
+      const result = writeData(base);
+      if (result.conflict) {
+        acceptData(readState());
+        storageMessage = result.message;
+      } else if (result.ok) {
+        acceptData(base);
+        storageMessage = '';
+      }
+      render();
       return result;
     },
     canUndoBalanceUpdate() { return Boolean(undoState); },
@@ -130,24 +230,34 @@
       return result;
     },
     captureBackup() {
-      return {version:1,createdAt:new Date().toISOString(),data:copy(currentData())};
+      return {version:2,createdAt:new Date().toISOString(),data:copy(currentData())};
     },
     restoreBackup(data) {
-      const result = writeData(data);
+      const normalized = {
+        ...data,
+        transactions: Array.isArray(data.transactions) ? data.transactions : [],
+        investments: normalizeInvestments(data.investments)
+      };
+      const result = writeData(normalized);
       if (result.ok) {
         undoState = undefined;
-        acceptData(data);
+        acceptData(normalized);
         render();
       }
       return result;
-    }
+    },
+    render() { render(); }
   };
   function currentData() {
-    const {accounts,goals,hidden,edited,personal,snapshots} = mono;
-    return {accounts,goals,hidden,edited,personal,snapshots};
+    const {accounts,goals,hidden,edited,personal,snapshots,transactions,investments} = mono;
+    return {accounts,goals,hidden,edited,personal,snapshots,transactions,investments};
   }
   function emptyPersonalSpace(hidden = false) {
-    return {accounts:[], goals:[], snapshots:[], personal:true, edited:false, hidden};
+    return {
+      accounts:[], goals:[], snapshots:[], transactions:[],
+      investments: defaultInvestments(),
+      personal:true, edited:false, hidden
+    };
   }
   function acceptData(data) {
     Object.assign(mono,data);
@@ -167,7 +277,7 @@
       return {ok:false, message:'浏览器无法保存这次更改，请检查可用存储空间后重试。'};
     }
   }
-  function withAccountHistory(accounts) {
+  function withAccountHistory(accounts, explicitDate) {
     const data = {...currentData(), accounts, edited:true};
     const before = positions(committedAccounts);
     const after = positions(accounts);
@@ -179,7 +289,9 @@
       const previous = oldById.get(String(account.id));
       return previous?.balance === account.balance ? account : {...account,updatedAt};
     });
-    const date = data.personal ? today() : demoDate;
+    const date = explicitDate && /^\d{4}-\d{2}-\d{2}$/.test(explicitDate)
+      ? explicitDate
+      : (data.personal ? today() : demoDate);
     const previous = data.snapshots.find(snapshot => snapshot.date === date);
     const snapshot = {date,net:netOf(after),accounts:after};
     if (previous?.opening) snapshot.opening = previous.opening;
@@ -190,7 +302,7 @@
   }
   function route() {
     const page = location.hash.slice(1);
-    return ['goals','accounts'].includes(page) ? page : 'overview';
+    return ['goals','accounts','investments'].includes(page) ? page : 'overview';
   }
   function allocation(sums, gross, animateIntro = false) {
     const items = Object.entries(types).filter(([type]) => type !== '负债' && sums[type]>0)
@@ -447,7 +559,7 @@
     allocation(sums,gross,isIntro);
     accountRows(gross);
   }
-  const pageOrder = { overview: 0, accounts: 1, goals: 2 };
+  const pageOrder = { overview: 0, accounts: 1, investments: 2, goals: 3 };
   let renderedPage;
   let amountsWereHidden;
   let hasPlayedIntro = false;
@@ -469,8 +581,12 @@
     byId('overview').hidden=page!=='overview';
     byId('secondary').hidden=page==='overview';
     const hasAccounts = mono.accounts.length > 0;
-    const addLabel = page === 'goals' ? '添加目标' : hasAccounts ? '记收支或添加账户' : '添加账户';
+    const addLabel = page === 'goals' ? '添加目标'
+      : page === 'investments' ? '添加 A 股持仓'
+      : hasAccounts ? '识图记账、记收支或添加账户' : '添加账户';
     byId('overviewEntry').hidden = !hasAccounts;
+    const scanBtn = byId('overviewScan');
+    if (scanBtn) scanBtn.hidden = !hasAccounts;
     byId('addAsset').className = hasAccounts ? 'mp-secondary' : 'mp-primary';
     byId('dockAdd').setAttribute('aria-label',addLabel);
     byId('dockAdd').title=addLabel;
@@ -490,6 +606,8 @@
           root.addEventListener('animationend', () => root.classList.remove('mono-intro-stage'), { once: true });
         }
       }
+    } else if (page === 'investments') {
+      window.MonoInvestments?.render();
     } else {
       window.MonoPanels.render(page);
     }
@@ -527,7 +645,7 @@
     const getVeilNodes = () => {
       const page = route();
       const root = byId(page === 'overview' ? 'overview' : 'secondary');
-      return root.querySelectorAll('[data-amount-key], #changePct, .donut-center, .alloc-legend strong, .mp-percent');
+      return root.querySelectorAll('[data-amount-key], #changePct, .donut-center, .alloc-legend strong, .mp-percent, .inv-val, .inv-pnl, .inv-sub-pct, .mp-tx-amount');
     };
     if (window.MonoMotion?.playPrivacyVeil) {
       window.MonoMotion.playPrivacyVeil(getVeilNodes, () => render());
@@ -570,11 +688,16 @@
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!byId('profileMenu').hidden){closeMenu();byId('profileBtn').focus()}});
   byId('addAsset').onclick=()=>window.MonoPanels.editAccount();
   byId('overviewEntry').onclick=()=>window.MonoPanels.recordEntry();
+  const overviewScan = byId('overviewScan');
+  if (overviewScan) overviewScan.onclick=()=>window.MonoImport?.open();
+  const menuServices = byId('menuServices');
+  if (menuServices) menuServices.onclick=()=>{ closeMenu(); window.MonoImport?.openSettings(); };
   const quickActions = byId('quickActions');
   window.MonoMotion?.bindDialogEscape(quickActions, () => byId('dockAdd').classList.remove('is-open'));
   byId('dockAdd').onclick=()=>{
     byId('dockAdd').focus({preventScroll:true});
     if(route()==='goals') window.MonoPanels.editGoal();
+    else if (route()==='investments') window.MonoInvestments?.editHolding();
     else if (!mono.accounts.length) window.MonoPanels.editAccount();
     else {
       quickActions.returnValue = '';
@@ -598,6 +721,7 @@
   quickActions.addEventListener('close', () => {
     byId('dockAdd').classList.remove('is-open');
     byId('dockAdd').focus({preventScroll:true});
+    if (quickActions.returnValue === 'scan') window.MonoImport?.open();
     if (quickActions.returnValue === 'entry') window.MonoPanels.recordEntry();
     if (quickActions.returnValue === 'account') window.MonoPanels.editAccount();
   });
@@ -692,4 +816,8 @@
     render();
   });
   render();
+  window.setTimeout(() => { window.MonoInvestments?.autoSync?.(); }, 300);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') window.MonoInvestments?.autoSync?.();
+  });
 })();

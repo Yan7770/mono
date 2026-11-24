@@ -50,14 +50,14 @@
 @media (max-width: 700px) {
   .overview-actions { display: none; }
   .mainnav {
-    --dock-tab-size: 52px;
+    --dock-tab-size: 48px;
     --dock-gap: 8px;
     --dock-inset: 4px;
     isolation: isolate;
     width: max-content;
     max-width: none;
     bottom: max(12px, calc(env(safe-area-inset-bottom) + var(--dock-inset)));
-    grid-template-columns: repeat(3, var(--dock-tab-size))
+    grid-template-columns: repeat(4, var(--dock-tab-size))
       calc(var(--dock-tab-size) + var(--dock-gap) + var(--dock-inset));
     gap: 0;
     padding: 0 0 0 var(--dock-inset);

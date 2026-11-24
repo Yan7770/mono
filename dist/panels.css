@@ -272,7 +272,7 @@ body:has(.mp-dialog:modal) { overflow: hidden; }
 .mp-confirm p { color: var(--muted, #737373); line-height: 1.65; overflow-wrap: anywhere; }
 
 @media (max-width: 700px) {
-  .mp-page { gap: 16px; padding-top: 21px; }
+  .mp-page { gap: 16px; padding-block: 21px calc(104px + env(safe-area-inset-bottom)); }
   .mp-heading h1 { font-size: 1.75rem; }
   .mp-page-add { display: none; }
   .mp-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; padding: 18px; }

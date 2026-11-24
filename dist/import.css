@@ -1,0 +1,435 @@
+/* AI Receipt Import, Service Settings & Transaction Ledger Styles */
+
+.mp-import-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.mp-import-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 12px;
+}
+
+.mp-import-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--soft);
+  font-size: .84rem;
+  color: var(--muted);
+}
+
+.mp-import-link {
+  color: var(--ink);
+  font-weight: 500;
+  font-size: .84rem;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--chip);
+}
+
+.mp-import-dropzone {
+  position: relative;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 30px 18px;
+  border: 1.5px dashed var(--divider);
+  border-radius: 20px;
+  background: var(--subtle);
+  cursor: pointer;
+}
+
+.mp-import-dropzone:hover {
+  background: var(--soft);
+  border-color: var(--muted);
+}
+
+.mp-import-dropzone strong {
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.mp-import-drop-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+  background: var(--chip);
+  color: var(--ink);
+}
+
+.mp-import-drop-icon .mp-icon {
+  width: 26px;
+  height: 26px;
+}
+
+.mp-sr-file {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.mp-import-loading {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  padding: 20px 8px;
+  text-align: center;
+}
+
+.mp-import-thumbs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.mp-import-thumb {
+  width: 56px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+}
+
+.mp-import-thumbs.is-compact {
+  justify-content: flex-start;
+  flex: none;
+}
+
+.mp-import-thumbs.is-compact .mp-import-thumb {
+  width: 40px;
+  height: 52px;
+  border-radius: 8px;
+}
+
+.mp-import-scanbar {
+  width: min(240px, 82%);
+  height: 4px;
+  border-radius: 999px;
+  background: var(--soft);
+  overflow: hidden;
+  position: relative;
+}
+
+.mp-import-scanbar::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 42%;
+  border-radius: inherit;
+  background: var(--ink);
+  animation: mono-scan-slide 1.25s ease-in-out infinite;
+}
+
+@keyframes mono-scan-slide {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(260%); }
+}
+
+.mp-import-review-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+
+.mp-import-summary-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.mp-import-summary-copy strong {
+  font-size: .92rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mp-import-list {
+  display: grid;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 2px;
+  border-block: 1px solid var(--line);
+}
+
+.mp-import-item {
+  display: grid;
+  gap: 8px;
+  padding: 11px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--soft);
+}
+
+.mp-import-item.is-unchecked {
+  opacity: .56;
+}
+
+.mp-import-item-top {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.mp-import-check {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--primary);
+  margin: 0;
+  cursor: pointer;
+}
+
+.mp-import-title-input,
+.mp-import-amt-input,
+.mp-import-acc-select,
+.mp-import-date-input {
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: max(16px, .9375rem);
+  min-width: 0;
+}
+
+.mp-import-type {
+  min-height: 36px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: .8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.mp-import-type.is-expense {
+  background: rgba(240, 106, 101, .16);
+  color: #ff998f;
+}
+
+.mp-import-type.is-income {
+  background: rgba(76, 195, 138, .16);
+  color: #8ed5a6;
+}
+
+:root[data-theme="light"] .mp-import-type.is-expense {
+  background: rgba(201, 51, 43, .11);
+  color: #aa3733;
+}
+
+:root[data-theme="light"] .mp-import-type.is-income {
+  background: rgba(24, 128, 78, .11);
+  color: #276e42;
+}
+
+.mp-import-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mp-import-tag {
+  font-size: .75rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--muted);
+}
+
+.mp-import-tag.is-warn {
+  background: rgba(217, 185, 130, .18);
+  color: var(--week-gain);
+}
+
+.mp-import-item-bottom {
+  display: grid;
+  grid-template-columns: minmax(86px, .95fr) minmax(0, 1.25fr) minmax(112px, 1fr);
+  gap: 6px;
+}
+
+.mp-import-acc-select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 28px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Cpath d='m3.5 5.5 3.5 3.5 3.5-3.5' fill='none' stroke='%23888888' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-position: right 9px center;
+  background-repeat: no-repeat;
+}
+
+.mp-import-amt-input {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.mp-import-actions {
+  justify-content: space-between;
+}
+
+.mp-settings-form .mp-feedback.is-ok {
+  color: #8ed5a6;
+}
+
+:root[data-theme="light"] .mp-settings-form .mp-feedback.is-ok {
+  color: #18804e;
+}
+
+.mp-settings-form .mp-feedback.is-error {
+  color: #ff998f;
+}
+
+:root[data-theme="light"] .mp-settings-form .mp-feedback.is-error {
+  color: #aa3733;
+}
+
+/* Transaction Ledger Panel inside #accounts */
+.mp-tx-head-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mp-tx-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--muted);
+  font-size: .75rem;
+}
+
+.mp-tx-date-group {
+  padding: 8px clamp(18px, 3vw, 30px);
+  font-size: .75rem;
+  color: var(--muted);
+  background: var(--subtle);
+  border-top: 1px solid var(--line);
+}
+
+.mp-tx-date-group:first-child {
+  border-top: 0;
+}
+
+.mp-tx-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 60px;
+  padding: 10px clamp(18px, 3vw, 30px);
+  border-top: 1px solid var(--line);
+}
+
+.mp-tx-info {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.mp-tx-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mp-tx-title-row strong {
+  font-size: .92rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mp-tx-source {
+  flex: none;
+  font-size: .7rem;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--muted);
+}
+
+.mp-tx-source.is-ai {
+  background: rgba(217, 185, 130, .18);
+  color: var(--week-gain);
+}
+
+.mp-tx-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.mp-tx-amount {
+  font-size: .9375rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.mp-tx-amount.is-expense { color: #ff998f; }
+.mp-tx-amount.is-income { color: #8ed5a6; }
+:root[data-theme="light"] .mp-tx-amount.is-expense { color: #aa3733; }
+:root[data-theme="light"] .mp-tx-amount.is-income { color: #276e42; }
+
+.mp-tx-delete {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  color: var(--muted);
+  flex: none;
+}
+
+.mp-tx-delete:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.mp-tx-delete .mp-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.mp-tx-more {
+  display: flex;
+  justify-content: center;
+  padding: 14px;
+  border-top: 1px solid var(--line);
+}
+
+@media (max-width: 700px) {
+  .mp-import-item-bottom {
+    grid-template-columns: 1fr 1fr;
+  }
+  .mp-import-date-input {
+    grid-column: 1 / -1;
+  }
+  .mp-tx-date-group,
+  .mp-tx-row {
+    padding-inline: 14px;
+  }
+}

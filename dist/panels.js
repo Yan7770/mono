@@ -5,7 +5,9 @@
   const iconPaths = {
     plus: '<path d="M12 5v14M5 12h14"/>',
     entry: '<path d="M7 4v13m-4-4 4 4 4-4m6 7V7m-4 4 4-4 4 4"/>',
+    scan: '<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M4 16v2a2 2 0 0 0 2 2h2M16 20h2a2 2 0 0 0 2-2v-2"/><path d="M7 12h10"/>',
     edit: '<path d="m14.5 5.5 4 4M4 20l4.5-1 12-12a1.6 1.6 0 0 0 0-2.3l-1.2-1.2a1.6 1.6 0 0 0-2.3 0l-12 12Z"/>',
+    trash: '<path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13"/>',
     close: '<path d="m6 6 12 12M18 6 6 18"/>',
     goal: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.8"/><circle cx="12" cy="12" r="1.2"/>',
     '现金存款': '<path d="M3 8.5 12 4l9 4.5H3Zm2 11h14M6.5 11v5.5M12 11v5.5M17.5 11v5.5"/>',
@@ -15,6 +17,7 @@
     '负债': '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10.5h18M6.5 15h4"/>'
   };
   let accountFilter = '';
+  let txFilter = '';
   let lastPage;
   const el = (tag, cls, text) => {
     const node = document.createElement(tag);
@@ -206,7 +209,10 @@
 
     function collect() {
       const changes = [];
+      const transactions = [];
       let netCents = currentNetCents;
+      const nowIso = new Date().toISOString();
+      const todayStr = window.MonoServices?.beijingNow?.().date || nowIso.slice(0, 10);
       for (const {account, input} of rows) {
         const value = input.value.normalize('NFKC').trim();
         if (!value) continue;
@@ -228,9 +234,21 @@
           return {invalid: input, message: account.name + '更新后的余额超过可保存的上限。'};
         }
         changes.push({id: account.id, balance: nextBalance / 100});
+        transactions.push({
+          id: globalThis.crypto?.randomUUID?.() || ('tx_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7)),
+          date: todayStr,
+          type: mode === 'income' ? 'income' : 'expense',
+          amount: cents / 100,
+          title: mode === 'income' ? (isDebt ? '还款 / 减少欠款' : '手动收入') : (isDebt ? '新增欠款' : '手动支出'),
+          accountId: String(account.id),
+          accountName: account.name,
+          source: 'manual',
+          note: '',
+          createdAt: nowIso
+        });
         netCents += movement;
       }
-      return {changes, netCents};
+      return {changes, transactions, netCents};
     }
 
     function refreshPreview() {
@@ -247,9 +265,9 @@
     form.addEventListener('input', refreshPreview);
     form.addEventListener('submit', event => {
       event.preventDefault();
-      const {changes} = collect();
+      const {changes, transactions} = collect();
       if (!dialog.open || !changes?.length) return;
-      const result = window.mono.updateBalances(changes);
+      const result = window.mono.updateBalances(changes, { transactions });
       if (result.ok) closeSheet(dialog);
       else feedback.textContent = result.message || '余额未保存，请重试。';
     });
@@ -317,6 +335,77 @@
       root.append(notice);
     }
     root.append(panel);
+    renderTransactionsSection(root);
+  }
+
+  function renderTransactionsSection(root) {
+    const txs = Array.isArray(window.mono.transactions) ? window.mono.transactions : [];
+    const box = el('section', 'mp-box mp-tx-box');
+    const bar = el('div', 'mp-box-head');
+    const titleWrap = el('div', 'mp-tx-head-title');
+    titleWrap.append(el('h2', '', '收支流水'));
+    if (txs.length) titleWrap.append(el('span', 'mp-tx-count', String(txs.length)));
+    const filter = el('select', 'mp-filter');
+    filter.setAttribute('aria-label', '按收支类型筛选流水');
+    [['', '全部流水'], ['expense', '仅看支出'], ['income', '仅看收入']].forEach(([val, label]) => {
+      filter.add(new Option(label, val));
+    });
+    filter.value = txFilter;
+    const list = el('div', 'mp-tx-list');
+    let visibleLimit = 30;
+
+    const paint = () => {
+      list.replaceChildren();
+      const filtered = txFilter ? txs.filter(t => t.type === txFilter) : txs;
+      if (!filtered.length) {
+        list.append(blank(txs.length ? '该筛选条件下暂无流水记录。' : '暂无收支流水。使用「识图记收支」或「记收支」后会自动保存每笔明细。'));
+        return;
+      }
+      const shown = filtered.slice(0, visibleLimit);
+      let currentDate = '';
+      for (const tx of shown) {
+        if (tx.date !== currentDate) {
+          currentDate = tx.date;
+          list.append(el('div', 'mp-tx-date-group', currentDate));
+        }
+        const row = el('div', 'mp-tx-row');
+        const info = el('div', 'mp-tx-info');
+        const titleRow = el('div', 'mp-tx-title-row');
+        titleRow.append(el('strong', '', tx.title || '未命名收支'));
+        const badge = el('span', 'mp-tx-source' + (tx.source === 'image' ? ' is-ai' : ''), tx.source === 'image' ? '识图' : '手动');
+        titleRow.append(badge);
+        const subParts = [tx.accountName || '未知账户'];
+        if (tx.note) subParts.push(tx.note);
+        info.append(titleRow, el('span', 'mp-meta', subParts.join(' · ')));
+
+        const right = el('div', 'mp-tx-right');
+        const sign = tx.type === 'income' ? '+' : '−';
+        const valText = window.mono.hidden ? '••••••' : sign + '¥' + window.mono.money(tx.amount);
+        const valNode = amountLabel('span', 'mp-tx-amount ' + (tx.type === 'income' ? 'is-income' : 'is-expense'), valText, 'tx-' + tx.id);
+        const delBtn = button('', 'mp-tx-delete', () => {
+          window.mono.deleteTransaction(tx.id);
+        }, 'trash');
+        delBtn.setAttribute('aria-label', '删除流水：' + tx.title);
+        delBtn.title = '删除流水记录（不影响当前余额）';
+        right.append(valNode, delBtn);
+        row.append(info, right);
+        list.append(row);
+      }
+      if (filtered.length > visibleLimit) {
+        const moreWrap = el('div', 'mp-tx-more');
+        moreWrap.append(button(`展开更多（剩余 ${filtered.length - visibleLimit} 笔）`, 'mp-secondary', () => {
+          visibleLimit += 30;
+          paint();
+        }));
+        list.append(moreWrap);
+      }
+    };
+
+    filter.addEventListener('change', () => { txFilter = filter.value; paint(); });
+    paint();
+    bar.append(titleWrap, filter);
+    box.append(bar, list);
+    root.append(box);
   }
 
   function goals(root) {
@@ -370,6 +459,7 @@
       () => isAccount ? editAccount() : editGoal(), 'plus');
     const controls = el('div', 'mp-heading-actions');
     if (isAccount && window.mono.accounts.length) {
+      controls.append(button('识图记收支', 'mp-secondary mp-scan-trigger', () => window.MonoImport?.open(), 'scan'));
       controls.append(button('记收支', 'mp-secondary mp-update-balances', batchBalances, 'entry'));
     }
     controls.append(add);

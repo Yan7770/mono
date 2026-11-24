@@ -65,6 +65,8 @@
       id, createdAt,
       accountCount: data.accounts.length,
       goalCount: data.goals.length,
+      holdingCount: Array.isArray(data.investments?.holdings) ? data.investments.holdings.length : 0,
+      txCount: Array.isArray(data.transactions) ? data.transactions.length : 0,
       personal: data.personal
     }));
   }
