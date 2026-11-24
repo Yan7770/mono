@@ -34,18 +34,6 @@
     '现金存款':{color:'var(--allocation-3)',icon:'bank'}, '其他资产':{color:'var(--allocation-4)',icon:'gem'},
     '负债':{color:'var(--allocation-5)',icon:'wallet'}
   };
-  const seed = {
-    accounts:[
-      {id:'deposit',name:'招行储蓄账户',bank:'招商银行',type:'现金存款',balance:1800000},
-      {id:'investment',name:'长期投资组合',bank:'中信证券',type:'投资资产',balance:3850000},
-      {id:'home',name:'自住房产',bank:'个人持有',type:'固定资产',balance:2500000},
-      {id:'reserve',name:'流动储备金',bank:'工商银行',type:'现金存款',balance:326580},
-      {id:'gold',name:'实物黄金',bank:'个人持有',type:'其他资产',balance:550000},
-      {id:'mortgage',name:'住房贷款',bank:'建设银行',type:'负债',balance:600000}
-    ],
-    goals:[{id:'safety',name:'家庭应急储备',target:500000,saved:326580},{id:'travel',name:'环球旅行',target:200000,saved:96000},{id:'pension',name:'退休储备',target:10000000,saved:3850000}],
-    hidden:false,edited:false
-  };
   const defaultInvestments = () => ({
     accountId: null,
     cashBalance: 0,
@@ -82,7 +70,6 @@
     };
   }
   const key = 'mono.private-wealth.v1';
-  const demoDate = '2026-11-21';
   const maxBalance = 99999999999.99;
   const copy = value => JSON.parse(JSON.stringify(value));
   let storedText = null;
@@ -91,16 +78,19 @@
       storedText = localStorage.getItem(key);
       const stored = JSON.parse(storedText);
       if (Array.isArray(stored?.accounts) && Array.isArray(stored?.goals)) {
+        if (stored.personal === false && !stored.edited) {
+          return emptyPersonalSpace(!!stored.hidden);
+        }
         return {
           accounts: stored.accounts, goals: stored.goals, hidden: !!stored.hidden,
-          edited: !!stored.edited, personal: !!stored.personal,
+          edited: !!stored.edited, personal: true,
           snapshots: Array.isArray(stored.snapshots) ? stored.snapshots : [],
           transactions: Array.isArray(stored.transactions) ? stored.transactions : [],
           investments: normalizeInvestments(stored.investments)
         };
       }
     } catch {}
-    return {...copy(seed), personal:false, snapshots:[], transactions:[], investments:defaultInvestments()};
+    return emptyPersonalSpace(false);
   }
   const today = () => {
     const d = new Date();
@@ -274,6 +264,7 @@
     restoreBackup(data) {
       const normalized = {
         ...data,
+        personal: true,
         transactions: Array.isArray(data.transactions) ? data.transactions : [],
         investments: normalizeInvestments(data.investments)
       };
@@ -330,7 +321,7 @@
     });
     const date = explicitDate && /^\d{4}-\d{2}-\d{2}$/.test(explicitDate)
       ? explicitDate
-      : (data.personal ? today() : demoDate);
+      : today();
     const previous = data.snapshots.find(snapshot => snapshot.date === date);
     const snapshot = {date,net:netOf(after),accounts:after};
     if (previous?.opening) snapshot.opening = previous.opening;
@@ -547,8 +538,8 @@
       }
       lastOverviewDebt = mono.hidden ? undefined : debt;
     }
-    const date=mono.personal?today():demoDate;
-    const snapshots=mono.personal?mono.snapshots:undefined;
+    const date=today();
+    const snapshots=mono.snapshots;
     const weekly = window.trendComparison('7D', net, snapshots, date);
     const movement = byId('weekMovement');
     const arrow = movement.querySelector('i');
@@ -587,7 +578,7 @@
     const rangeSwitch = document.querySelector('.range-switch');
     const activeRangeBtn = rangeSwitch?.querySelector('[data-range][aria-pressed="true"]');
     window.MonoMotion?.syncSlider(rangeSwitch, activeRangeBtn, { instant: !rangeChanged });
-    if(mono.personal && mono.snapshots.length<2) {
+    if(mono.snapshots.length<2) {
       byId('periodCaption').textContent=mono.snapshots.length
         ? (comparison.baseline?.accounts && mono.snapshots[0].opening ? '首日净资产变化' : '首日净资产记录')
         : '暂无净资产记录';
@@ -666,8 +657,7 @@
     }
     renderedPage = page;
     amountsWereHidden = mono.hidden;
-    byId('startPersonal').hidden=mono.personal;
-    byId('dataNote').textContent=storageMessage||(mono.personal?'':'体验空间');
+    byId('dataNote').textContent=storageMessage;
   }
   function closeMenu(){
     window.MonoMotion?.hideMenuAnimated(byId('profileMenu'), byId('profileBtn'));
@@ -765,24 +755,6 @@
     if (quickActions.returnValue === 'transfer') window.MonoPanels.recordEntry('transfer');
     if (quickActions.returnValue === 'account') window.MonoPanels.editAccount();
   });
-  const startDialog = byId('startDialog');
-  window.MonoMotion?.bindDialogEscape(startDialog);
-  startDialog.addEventListener('click', event => {
-    if (event.target === startDialog) window.MonoMotion?.closeDialog(startDialog);
-  });
-  byId('startPersonal').onclick=()=>{closeMenu();byId('startError').textContent='';startDialog.showModal()};
-  byId('cancelStart').onclick=()=>window.MonoMotion?.closeDialog(startDialog);
-  byId('confirmStart').onclick=()=>{
-    const candidate = emptyPersonalSpace(mono.hidden);
-    const result = writeData(candidate);
-    if (!result.ok) {
-      byId('startError').textContent = result.message;
-      return;
-    }
-    undoState = undefined;
-    acceptData(candidate);
-    window.MonoMotion?.closeDialog(startDialog);location.hash='overview';render();
-  };
   const resetDialog = byId('resetDialog');
   window.MonoMotion?.bindDialogEscape(resetDialog);
   resetDialog.addEventListener('click', event => {

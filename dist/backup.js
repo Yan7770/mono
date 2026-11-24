@@ -214,14 +214,15 @@
     const backup = record(value);
     check(backup.version === 1 || backup.version === 2, '当前版本无法读取此备份格式。');
     const { accounts, goals, hidden, edited, personal, snapshots, transactions, investments } = record(backup.data);
-    check([hidden, edited, personal].every(flag => typeof flag === 'boolean'), '备份缺少有效的空间设置。');
+    check([hidden, edited].every(flag => typeof flag === 'boolean'), '备份缺少有效的空间设置。');
+    check(personal === undefined || typeof personal === 'boolean', '备份缺少有效的空间设置。');
     return {
       version: 2,
       createdAt: timestamp(backup.createdAt),
       data: {
         accounts: list(accounts, account, 'id'),
         goals: list(goals, goal, 'id'),
-        hidden, edited, personal,
+        hidden, edited, personal: true,
         snapshots: list(snapshots, snapshot, 'date').sort((a, b) => a.date.localeCompare(b.date)),
         transactions: Array.isArray(transactions) ? list(transactions, transaction, 'id') : [],
         investments: normalizeInvestments(investments)
@@ -323,7 +324,6 @@
       const rows = [
         ['备份时间', localTime(entry.createdAt)],
         ['备份记录', '第 ' + entry.id + ' 次'],
-        ['资产空间', entry.personal ? '个人资产' : '体验空间'],
         ['资产账户', String(entry.accountCount)],
         ['A 股持仓', String(entry.holdingCount || 0)],
         ['收支流水', String(entry.txCount || 0)],

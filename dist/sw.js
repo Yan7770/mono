@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'mono-pwa-v3';
+const CACHE_NAME = 'mono-pwa-v4';
 const ASSETS = [
   './',
   './index.html',

@@ -24,7 +24,6 @@
 .change-list small { display: block; margin-top: 3px; color: var(--muted); font-size: .75rem; }
 .change-list dd { margin: 0; font-weight: 500; text-align: right; overflow-wrap: anywhere; }
 .change-note { color: var(--muted); font-size: .82rem; line-height: 1.55; }
-#startError:empty { display: none; }
 @media (hover: hover) {
   .change-button:hover { background: var(--soft); }
 }

@@ -1,57 +1,19 @@
 (() => {
   "use strict";
 
-  const demoNet = 8426580;
   const spans = { "7D": 7, "1M": 30, "3M": 91, "6M": 183, "1Y": 365, ALL: 730 };
   const day = 86400000;
   const money = new Intl.NumberFormat("zh-CN", {
     minimumFractionDigits: 2, maximumFractionDigits: 2
   });
-  // Demo history is shared across all ranges. Account edits only affect the latest balance.
-  const history = [
-    [-730, .742], [-692, .749], [-658, .776], [-625, .768], [-595, .786],
-    [-569, .783], [-544, .818], [-510, .825], [-485, .811], [-453, .849],
-    [-419, .854], [-398, .882], [-380, .871], [-365, 1 - 934956 / demoNet],
-    [-352, .884], [-342, .896], [-331, .892], [-316, .912], [-306, .905],
-    [-296, .918], [-285, .902], [-278, .901], [-266, .912], [-252, .907],
-    [-245, .922], [-235, .923], [-221, .937], [-212, .934], [-201, .943],
-    [-191, .932], [-183, .936], [-173, .931], [-161, .944], [-147, .939],
-    [-136, .955], [-125, .957], [-116, .968], [-104, .962], [-97, .969],
-    [-91, .959], [-80, .965], [-69, .955], [-62, .963], [-54, .961],
-    [-43, .979], [-35, .975], [-30, .981], [-22, .985], [-18, .981],
-    [-12, .992], [-7, .987], [-3, .996], [0, 1]
-  ];
-
-  function buildHistory() {
-    const values = [];
-    let segment = 0;
-    for (let i = -730; i <= 0; i++) {
-      while (history[segment + 1][0] < i) segment++;
-      const [a, start] = history[segment];
-      const [b, end] = history[segment + 1];
-      const t = (i - a) / (b - a);
-      const detail = Math.sin(i * .81) * .0017 + Math.cos(i * 2.19) * .0013;
-      values.push(start + (end - start) * t + detail * Math.sin(Math.PI * t));
-    }
-    return values;
-  }
-
-  const demoBalances = buildHistory().map(factor => demoNet * factor);
   const spanFor = period => spans[period] || spans["1Y"];
 
   function timeline(period, net, snapshots, date) {
-    const live = Array.isArray(snapshots);
     const today = new Date();
     const localToday = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
     const asOf = Date.parse(date);
-    const end = Number.isFinite(asOf) ? Math.floor(asOf / day) * day
-      : live ? localToday : Date.UTC(2026, 10, 21);
-    if (!live) {
-      const span = spanFor(period);
-      const points = demoBalances.slice(-span - 1).map((value, offset) => ({ value, offset }));
-      points[span].value = Number.isFinite(net) ? net : demoNet;
-      return { start: end - span * day, span, points };
-    }
+    const end = Number.isFinite(asOf) ? Math.floor(asOf / day) * day : localToday;
+    if (!Array.isArray(snapshots)) return { points: [] };
 
     const daily = new Map();
     for (const entry of snapshots) {

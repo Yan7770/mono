@@ -469,7 +469,7 @@
         syncedBalance: summary.accountTotal,
         createAccountIfMissing: true,
         backfilledSnapshots,
-        snapshotDate: window.mono.personal ? (latestQuoteDate || bjNow.date) : undefined
+        snapshotDate: latestQuoteDate || bjNow.date
       });
       scheduleLivePolling();
       return { ok: true, settledCount, reSettledFund };

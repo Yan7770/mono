@@ -401,7 +401,7 @@ footer:empty { padding-block: 0; }
 .start-dialog h2 { font-size: 1.25rem; font-weight: 500; }
 .start-dialog p { margin-top: 10px; color: var(--muted); font-size: .95rem; line-height: 1.7; }
 .start-dialog div { display: flex; justify-content: flex-end; gap: 10px; margin-top: 19px; }
-#cancelStart, #cancelReset { min-height: 44px; padding-inline: 15px; border-radius: 100px; background: var(--soft); }
+#cancelReset { min-height: 44px; padding-inline: 15px; border-radius: 100px; background: var(--soft); }
 #confirmReset:disabled { background: var(--soft); color: var(--muted); cursor: not-allowed; }
 #resetError:empty { display: none; }
 
