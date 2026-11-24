@@ -7,6 +7,7 @@
     target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
     plus:'<path d="M12 5v14M5 12h14"/>',
     entry:'<path d="M7 4v13m-4-4 4 4 4-4m6 7V7m-4 4 4-4 4 4"/>',
+    swap:'<path d="M7 16V4m0 0-3.5 3.5M7 4l3.5 3.5M17 8v12m0 0-3.5-3.5M17 20l3.5-3.5"/>',
     scan:'<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M4 16v2a2 2 0 0 0 2 2h2M16 20h2a2 2 0 0 0 2-2v-2"/><path d="M7 12h10"/>',
     chart:'<path d="M4 19h16M6 15l4-4 3 2.5 5-6.5"/><path d="M15 7h3v3"/>',
     settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.82-.33 1.7 1.7 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.51 1.7 1.7 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .33-1.82 1.7 1.7 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.51-1 1.7 1.7 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.82.33H9a1.7 1.7 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.51 1.7 1.7 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.33 1.82V9a1.7 1.7 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z"/>',
@@ -47,19 +48,35 @@
   };
   const defaultInvestments = () => ({
     accountId: null,
+    cashBalance: 0,
     holdings: [],
     holdingsTimeline: [],
     lastSettledDate: null,
+    settledQuoteDates: {},
     lastSyncAt: null,
     settlements: []
   });
   function normalizeInvestments(raw) {
     if (!raw || typeof raw !== 'object') return defaultInvestments();
+    const rawCash = Number(raw.cashBalance);
+    const cashBalance = Number.isFinite(rawCash) && rawCash >= 0 && rawCash <= maxBalance
+      ? Math.round(rawCash * 100) / 100
+      : 0;
+    const settledQuoteDates = {};
+    if (raw.settledQuoteDates && typeof raw.settledQuoteDates === 'object' && !Array.isArray(raw.settledQuoteDates)) {
+      for (const [k, v] of Object.entries(raw.settledQuoteDates)) {
+        if (/^(sh|sz|bj|jj)\d{6}$/.test(k) && typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+          settledQuoteDates[k] = v;
+        }
+      }
+    }
     return {
       accountId: raw.accountId ? String(raw.accountId) : null,
+      cashBalance,
       holdings: Array.isArray(raw.holdings) ? raw.holdings : [],
       holdingsTimeline: Array.isArray(raw.holdingsTimeline) ? raw.holdingsTimeline : [],
       lastSettledDate: typeof raw.lastSettledDate === 'string' ? raw.lastSettledDate : null,
+      settledQuoteDates,
       lastSyncAt: typeof raw.lastSyncAt === 'string' ? raw.lastSyncAt : null,
       settlements: Array.isArray(raw.settlements) ? raw.settlements : []
     };
@@ -161,6 +178,28 @@
       }
       return result;
     },
+    updateTransaction(id, patch = {}) {
+      let found = false;
+      const next = this.transactions.map(item => {
+        if (String(item.id) !== String(id)) return item;
+        found = true;
+        return {
+          ...item,
+          ...(patch.title !== undefined ? { title: String(patch.title).trim().slice(0, 48) || item.title } : {}),
+          ...(patch.category !== undefined ? { category: String(patch.category).trim().slice(0, 24) } : {}),
+          ...(patch.note !== undefined ? { note: String(patch.note).trim().slice(0, 64) } : {}),
+          ...(patch.date !== undefined && /^\d{4}-\d{2}-\d{2}$/.test(patch.date) ? { date: patch.date } : {})
+        };
+      });
+      if (!found) return {ok:false, message:'该流水记录已不存在。'};
+      const candidate = {...currentData(), transactions: next, edited: true};
+      const result = writeData(candidate);
+      if (result.ok) {
+        acceptData(candidate);
+        render();
+      }
+      return result;
+    },
     syncInvestmentState({ investments, syncedBalance, createAccountIfMissing = false, backfilledSnapshots = [], snapshotDate } = {}) {
       let accounts = copy(this.accounts);
       const nextInv = normalizeInvestments(investments || this.investments);
@@ -168,7 +207,7 @@
         ? accounts.find(a => String(a.id) === String(nextInv.accountId))
         : null;
 
-      if (!linked && createAccountIfMissing && nextInv.holdings.length > 0) {
+      if (!linked && createAccountIfMissing && (nextInv.holdings.length > 0 || nextInv.cashBalance > 0)) {
         const newId = globalThis.crypto?.randomUUID?.() || 'inv_' + Date.now();
         linked = {
           id: newId,
@@ -645,7 +684,7 @@
     const getVeilNodes = () => {
       const page = route();
       const root = byId(page === 'overview' ? 'overview' : 'secondary');
-      return root.querySelectorAll('[data-amount-key], #changePct, .donut-center, .alloc-legend strong, .mp-percent, .inv-val, .inv-pnl, .inv-sub-pct, .mp-tx-amount');
+      return root.querySelectorAll('[data-amount-key], #changePct, .donut-center, .alloc-legend strong, .mp-percent, .inv-val, .inv-pnl, .inv-sub-pct, .mp-tx-amount, .mp-tx-stat-val, .mp-cat-row-right strong, .mp-cat-row-right small');
     };
     if (window.MonoMotion?.playPrivacyVeil) {
       window.MonoMotion.playPrivacyVeil(getVeilNodes, () => render());
@@ -722,7 +761,8 @@
     byId('dockAdd').classList.remove('is-open');
     byId('dockAdd').focus({preventScroll:true});
     if (quickActions.returnValue === 'scan') window.MonoImport?.open();
-    if (quickActions.returnValue === 'entry') window.MonoPanels.recordEntry();
+    if (quickActions.returnValue === 'entry') window.MonoPanels.recordEntry('expense');
+    if (quickActions.returnValue === 'transfer') window.MonoPanels.recordEntry('transfer');
     if (quickActions.returnValue === 'account') window.MonoPanels.editAccount();
   });
   const startDialog = byId('startDialog');
@@ -820,4 +860,9 @@
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') window.MonoInvestments?.autoSync?.();
   });
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});
+    }, { once: true });
+  }
 })();

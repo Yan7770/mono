@@ -70,10 +70,16 @@
   }
 
   function goal(value) {
-    return {
+    const mode = value.mode === 'net' || value.mode === 'accounts' ? value.mode : 'manual';
+    const accountIds = Array.isArray(value.accountIds)
+      ? [...new Set(value.accountIds.map(id => itemId(String(id))))]
+      : [];
+    const item = {
       id: itemId(value.id), name: shortText(value.name),
-      target: amount(value.target, { min: .01 }), saved: amount(value.saved)
+      target: amount(value.target, { min: .01 }), saved: amount(value.saved),
+      mode, accountIds
     };
+    return item;
   }
 
   function positionSnapshot(value) {
@@ -100,7 +106,7 @@
   }
 
   function transaction(value) {
-    const type = value.type === 'income' ? 'income' : 'expense';
+    const type = value.type === 'income' ? 'income' : value.type === 'transfer' ? 'transfer' : 'expense';
     const source = value.source === 'image' ? 'image' : 'manual';
     const item = {
       id: itemId(value.id),
@@ -113,6 +119,13 @@
       source,
       createdAt: timestamp(value.createdAt)
     };
+    if (value.category != null && String(value.category).trim()) {
+      item.category = shortText(String(value.category).trim().slice(0, 24));
+    }
+    if (value.targetAccountId != null && String(value.targetAccountId).trim()) {
+      item.targetAccountId = itemId(String(value.targetAccountId));
+      item.targetAccountName = shortText(value.targetAccountName ?? '', true);
+    }
     if (value.note != null) item.note = shortText(String(value.note), true);
     return item;
   }
@@ -142,7 +155,19 @@
 
   function normalizeInvestments(value) {
     if (!value || typeof value !== 'object') {
-      return { accountId: null, holdings: [], holdingsTimeline: [], lastSettledDate: null, lastSyncAt: null, settlements: [] };
+      return { accountId: null, cashBalance: 0, holdings: [], holdingsTimeline: [], lastSettledDate: null, settledQuoteDates: {}, lastSyncAt: null, settlements: [] };
+    }
+    const rawCash = Number(value.cashBalance);
+    const cashBalance = Number.isFinite(rawCash) && rawCash >= 0 && rawCash <= maxBalance
+      ? Math.round(rawCash * 100) / 100
+      : 0;
+    const settledQuoteDates = {};
+    if (value.settledQuoteDates && typeof value.settledQuoteDates === 'object' && !Array.isArray(value.settledQuoteDates)) {
+      for (const [k, v] of Object.entries(value.settledQuoteDates)) {
+        if (/^(sh|sz|bj|jj)\d{6}$/.test(k) && typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+          settledQuoteDates[k] = v;
+        }
+      }
     }
     const holdings = Array.isArray(value.holdings) ? list(value.holdings, holding, 'id') : [];
     const holdingsTimeline = Array.isArray(value.holdingsTimeline)
@@ -175,9 +200,11 @@
       : [];
     return {
       accountId: value.accountId ? itemId(String(value.accountId)) : null,
+      cashBalance,
       holdings,
       holdingsTimeline,
       lastSettledDate: value.lastSettledDate ? calendarDate(value.lastSettledDate) : null,
+      settledQuoteDates,
       lastSyncAt: value.lastSyncAt ? timestamp(value.lastSyncAt) : null,
       settlements
     };

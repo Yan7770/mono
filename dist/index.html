@@ -4,8 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#111113">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MONO">
   <title>MONO · 私人财富管理</title>
   <meta name="description" content="在 MONO 查看净资产、资产配置与财富目标。">
+  <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./mono.svg?v=2" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./apple-touch-icon.png" sizes="180x180">
   <script src="./theme.js"></script>
@@ -109,6 +114,7 @@
       <div class="quick-action-list">
         <button value="scan"><i data-icon="scan"></i>识图记收支</button>
         <button value="entry"><i data-icon="entry"></i>手动记收支</button>
+        <button value="transfer"><i data-icon="swap"></i>转账 / 还款</button>
         <button value="account"><i data-icon="plus"></i>添加账户</button>
       </div>
       <button class="quick-cancel" value="cancel">取消</button>

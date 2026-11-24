@@ -404,17 +404,20 @@
         rows = result.items.map((item, idx) => {
           const isTransfer = item.type === 'transfer';
           const duplicate = !isTransfer && isLikelyDuplicate(item, existingTxs);
+          const effectiveType = isTransfer ? 'expense' : item.type;
+          const cat = window.MonoServices.normalizeCategory(item.category, effectiveType, item.title, item.note);
           return {
             uid: 'row_' + idx + '_' + Date.now(),
             checked: !isTransfer && !duplicate,
-            type: isTransfer ? 'expense' : item.type,
+            type: effectiveType,
+            category: cat,
             flaggedTransfer: isTransfer,
             flaggedDuplicate: duplicate,
             amount: String(item.amount.toFixed(2)),
             title: item.title,
             date: item.date || today,
             accountId: matchAccountId(item.accountHint, accounts),
-            note: item.note || (item.accountHint ? '' : '')
+            note: item.note || ''
           };
         });
         renderReviewStep();
@@ -464,6 +467,7 @@
           uid: 'manual_' + Date.now(),
           checked: true,
           type: 'expense',
+          category: '餐饮',
           flaggedTransfer: false,
           flaggedDuplicate: false,
           amount: '',
@@ -576,12 +580,6 @@
           const typeBtn = el('button', 'mp-import-type ' + (row.type === 'income' ? 'is-income' : 'is-expense'),
             row.type === 'income' ? '收入' : '支出');
           typeBtn.type = 'button';
-          typeBtn.addEventListener('click', () => {
-            row.type = row.type === 'income' ? 'expense' : 'income';
-            typeBtn.textContent = row.type === 'income' ? '收入' : '支出';
-            typeBtn.className = 'mp-import-type ' + (row.type === 'income' ? 'is-income' : 'is-expense');
-            evaluate();
-          });
 
           const removeBtn = el('button', 'mp-tx-delete');
           removeBtn.type = 'button';
@@ -614,6 +612,31 @@
             evaluate();
           });
 
+          const catSelect = el('select', 'mp-import-acc-select mp-import-cat-select');
+          catSelect.setAttribute('aria-label', '收支分类');
+          const fillCatOptions = () => {
+            catSelect.replaceChildren();
+            const cats = row.type === 'income'
+              ? window.MonoServices.INCOME_CATEGORIES
+              : window.MonoServices.EXPENSE_CATEGORIES;
+            cats.forEach(c => catSelect.add(new Option(c.name, c.name)));
+            row.category = window.MonoServices.normalizeCategory(row.category, row.type, row.title, row.note);
+            catSelect.value = row.category;
+          };
+          fillCatOptions();
+          catSelect.addEventListener('change', () => {
+            row.category = catSelect.value;
+          });
+
+          typeBtn.addEventListener('click', () => {
+            row.type = row.type === 'income' ? 'expense' : 'income';
+            typeBtn.textContent = row.type === 'income' ? '收入' : '支出';
+            typeBtn.className = 'mp-import-type ' + (row.type === 'income' ? 'is-income' : 'is-expense');
+            row.category = '';
+            fillCatOptions();
+            evaluate();
+          });
+
           const accSelect = el('select', 'mp-import-acc-select');
           accounts.forEach(acc => accSelect.add(new Option(acc.name, String(acc.id))));
           accSelect.value = row.accountId;
@@ -629,7 +652,7 @@
             if (dateInput.value) row.date = dateInput.value;
           });
 
-          bottomLine.append(amtInput, accSelect, dateInput);
+          bottomLine.append(amtInput, catSelect, accSelect, dateInput);
           card.append(bottomLine);
           listEl.append(card);
         });
@@ -643,12 +666,16 @@
         const today = window.MonoServices.beijingNow().date;
         const newTxs = checkedRows.map(r => {
           const acc = accounts.find(a => String(a.id) === String(r.accountId));
+          const type = r.type === 'income' ? 'income' : 'expense';
+          const title = String(r.title || '').trim() || (type === 'income' ? '识图收入' : '识图支出');
+          const category = window.MonoServices.normalizeCategory(r.category, type, title, r.note);
           return {
             id: globalThis.crypto?.randomUUID?.() || ('img_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7)),
             date: /^\d{4}-\d{2}-\d{2}$/.test(r.date) ? r.date : today,
-            type: r.type === 'income' ? 'income' : 'expense',
+            type,
+            category,
             amount: Math.round(Number(String(r.amount).replaceAll(',', '')) * 100) / 100,
-            title: String(r.title || '').trim() || (r.type === 'income' ? '识图收入' : '识图支出'),
+            title,
             accountId: String(r.accountId),
             accountName: acc?.name || '',
             source: 'image',

@@ -376,6 +376,68 @@
     return fetchKlineDirect(symbol, days);
   }
 
+  const EXPENSE_CATEGORIES = [
+    { name: '餐饮', color: '#e6a26c' },
+    { name: '交通', color: '#7ea8e8' },
+    { name: '购物', color: '#d78ec8' },
+    { name: '居住', color: '#8ac7b5' },
+    { name: '日用', color: '#a8b878' },
+    { name: '娱乐', color: '#b494e8' },
+    { name: '医疗', color: '#e88b8b' },
+    { name: '人情', color: '#e3b875' },
+    { name: '学习', color: '#75bfd9' },
+    { name: '其他支出', color: '#9a9aa6' }
+  ];
+
+  const INCOME_CATEGORIES = [
+    { name: '工资', color: '#6ec997' },
+    { name: '奖金', color: '#d9b982' },
+    { name: '理财收益', color: '#7ea8e8' },
+    { name: '退款', color: '#9ec4d9' },
+    { name: '兼职', color: '#b494e8' },
+    { name: '其他收入', color: '#9a9aa6' }
+  ];
+
+  const EXPENSE_CAT_SET = new Set(EXPENSE_CATEGORIES.map(c => c.name));
+  const INCOME_CAT_SET = new Set(INCOME_CATEGORIES.map(c => c.name));
+  const ALL_CAT_COLOR = new Map([
+    ...EXPENSE_CATEGORIES.map(c => [c.name, c.color]),
+    ...INCOME_CATEGORIES.map(c => [c.name, c.color]),
+    ['转账', '#9a9aa6'],
+    ['还款', '#9a9aa6']
+  ]);
+
+  function normalizeCategory(rawCategory, type = 'expense', title = '', note = '') {
+    if (type === 'transfer') return /还/.test(`${rawCategory || ''} ${title} ${note}`) ? '还款' : '转账';
+    const raw = String(rawCategory || '').trim();
+    if (type === 'income') {
+      if (INCOME_CAT_SET.has(raw)) return raw;
+      const hay = `${raw} ${title} ${note}`;
+      if (/工资|薪资|发薪|代发/.test(hay)) return '工资';
+      if (/奖金|年终|分红|补贴|津贴|报销/.test(hay)) return '奖金';
+      if (/理财|股息|基金|利息|收益|红利/.test(hay)) return '理财收益';
+      if (/退款|退货|退回|售后/.test(hay)) return '退款';
+      if (/兼职|副业|稿费|外包|劳务/.test(hay)) return '兼职';
+      return '其他收入';
+    }
+    if (EXPENSE_CAT_SET.has(raw)) return raw;
+    const hay = `${raw} ${title} ${note}`;
+    if (/餐|饭|外卖|美团|饿了么|咖啡|奶茶|星巴克|瑞幸|肯德基|麦当劳|海底捞|火锅|烧烤|食堂|饮品|早餐|午餐|晚餐|零食|水果|茶/.test(hay)) return '餐饮';
+    if (/滴滴|打车|高德|地铁|公交|交通|高铁|铁路|12306|航空|机票|加油|石化|石油|停车|高速|ETC|单车|出行|车票/.test(hay)) return '交通';
+    if (/淘宝|天猫|京东|拼多多|抖音|得物|商城|百货|优衣库|苹果|Apple|服饰|服装|数码|电子|鞋|包|购物/.test(hay)) return '购物';
+    if (/房租|物业|水电|燃气|电费|水费|宽带|话费|联通|移动|电信|房贷|按揭|装修|家具|家电|暖气/.test(hay)) return '居住';
+    if (/超市|便利店|7-11|全家|罗森|屈臣氏|盒马|山姆|菜|日用|纸巾|洗护|快递|顺丰|生鲜/.test(hay)) return '日用';
+    if (/电影|游戏|Steam|会员|腾讯视频|爱奇艺|网易云|音乐|门票|旅游|酒店|民宿|景点|健身|运动|球|KTV|娱乐/.test(hay)) return '娱乐';
+    if (/医院|药|诊所|体检|牙科|口腔|挂号|医疗|医保|健康/.test(hay)) return '医疗';
+    if (/红包|转账给|礼物|礼金|请客|孝敬|父母|人情|份子/.test(hay)) return '人情';
+    if (/书|课程|培训|学费|考试|教育|学习|知识|专栏|文具/.test(hay)) return '学习';
+    return '其他支出';
+  }
+
+  function categoryColor(name) {
+    return ALL_CAT_COLOR.get(name) || '#9a9aa6';
+  }
+
   function buildDirectVisionPrompt(accounts, today) {
     const accountLines = Array.isArray(accounts) && accounts.length
       ? accounts.map(a => `- ${a.name}（机构：${a.bank || '无'}，类型：${a.type}）`).join('\n')
@@ -389,12 +451,16 @@ ${accountLines}
 识别与去重规则：
 1. 若图片同时包含「月度/账单汇总行」（如“本月支出合计”“总收入”“账户余额”“可用额度”）和「逐笔交易明细」，只提取逐笔明细，绝不把汇总行当作一笔支出重复提取。若整张图只有单笔支付成功页或小票总计，则提取该笔最终实付金额。
 2. 每笔条目的 type 必须是 "expense"（真实消费/支出）、"income"（工资/收款/退款，退款请在 note 标注“退款”）或 "transfer"（信用卡还款、花呗/白条还款、提现、本人银行卡互转、零钱通/余额宝转入转出等内部资金划转）。
-3. amount 必须是正数，最多保留两位小数。
-4. date 格式为 YYYY-MM-DD；无年份按当前年份补全；无日期填当前日期参考值。
-5. accountHint 填写截图中显示的支付方式或银行卡名称，无法判断则填空字符串。
+3. category 必须从以下预设分类中选最贴切的一个：
+   - 支出：餐饮、交通、购物、居住、日用、娱乐、医疗、人情、学习、其他支出
+   - 收入：工资、奖金、理财收益、退款、兼职、其他收入
+   - 转账：转账 或 还款
+4. amount 必须是正数，最多保留两位小数。
+5. date 格式为 YYYY-MM-DD；无年份按当前年份补全；无日期填当前日期参考值。
+6. accountHint 填写截图中显示的支付方式或银行卡名称，无法判断则填空字符串。
 
 输出 JSON 格式：
-{"summaryNote":"来源简述","items":[{"type":"expense","amount":38.5,"title":"商户或摘要","date":"${today}","accountHint":"支付方式","note":""}]}`;
+{"summaryNote":"来源简述","items":[{"type":"expense","category":"餐饮","amount":38.5,"title":"商户或摘要","date":"${today}","accountHint":"支付方式","note":""}]}`;
   }
 
   function parseJsonFromText(rawText) {
@@ -489,13 +555,16 @@ ${accountLines}
       const type = parseItemType(raw.type || raw.direction || raw.category, raw.amount, title);
       const rawDate = String(raw.date || '').trim().slice(0, 10);
       const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : fallbackDate;
+      const note = String(raw.note || raw.remark || '').trim().slice(0, 64);
+      const category = normalizeCategory(raw.category || raw.tag, type, title, note);
       items.push({
         type,
+        category,
         amount,
         title,
         date,
         accountHint: String(raw.accountHint || raw.account || raw.paymentMethod || '').trim().slice(0, 48),
-        note: String(raw.note || raw.remark || '').trim().slice(0, 64)
+        note
       });
     }
     return {
@@ -699,6 +768,10 @@ ${accountLines}
 
   window.MonoServices = {
     AI_PRESETS,
+    EXPENSE_CATEGORIES,
+    INCOME_CATEGORIES,
+    normalizeCategory,
+    categoryColor,
     readConfig,
     saveConfig,
     hasVisionReady,

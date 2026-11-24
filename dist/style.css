@@ -95,7 +95,15 @@
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; color: var(--ink); background: var(--bg); font-size: 1rem; }
+html { background: var(--bg); }
+body { margin: 0; color: var(--ink); background: var(--bg); font-size: 1rem; -webkit-tap-highlight-color: transparent; }
+@media (display-mode: standalone) {
+  .mainnav, .topbar, .dock-add {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+}
 h1, h2, p { margin: 0; }
 button, a, input, select { font: inherit; }
 button, a { touch-action: manipulation; }

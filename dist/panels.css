@@ -185,6 +185,46 @@
   gap: 10px;
 }
 .mp-goal h2 { overflow-wrap: anywhere; }
+.mp-goal-link-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  margin-top: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--secondary-ink);
+  font-size: .76rem;
+  line-height: 1.35;
+}
+.mp-goal-link-badge .mp-icon { width: 13px; height: 13px; }
+.mp-goal-link-badge span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-goal-modes { margin-bottom: 0; }
+.mp-goal-accounts-pane { display: grid; gap: 10px; }
+.mp-goal-acc-list {
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--soft);
+  max-height: 210px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.mp-goal-acc-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 9px 12px;
+  cursor: pointer;
+}
+.mp-goal-acc-item + .mp-goal-acc-item { border-top: 1px solid var(--line); }
+.mp-goal-acc-info { display: grid; gap: 1px; min-width: 0; }
+.mp-goal-acc-info strong { font-size: .88rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-goal-acc-val { font-size: .86rem; color: var(--secondary-ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mp-goal-link-preview { font-size: .85rem; }
 .mp-goal-figures { display: grid; gap: 5px; margin: 20px 0 16px; }
 .mp-goal-value {
   font-size: clamp(1.6rem, 2.8vw, 2rem);

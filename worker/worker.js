@@ -243,10 +243,14 @@ ${accountLines}
    - "expense"：真实消费、购物、餐饮、缴费、红包发出等支出
    - "income"：工资、奖金、转账收款、红包收款、退款（退款请在 note 中标注“退款”）等收入
    - "transfer"：信用卡还款、花呗/白条还款、微信/支付宝提现、本人银行卡互转、零钱通/余额宝/朝朝宝转入转出等内部资金划转（非真实收支）
-3. amount 必须是正数，最多保留两位小数。
-4. date 格式为 YYYY-MM-DD；若截图只有月日（如 11-24），按当前年份补全；若无日期则填当前日期参考值。
-5. accountHint 填写截图中显示的支付方式或收款账户（如“招商银行储蓄卡(1234)”“零钱”“花呗”“信用卡”），无法判断则填空字符串。
-6. 若截图中看不到任何有效金额或交易记录，items 返回空数组，并在 summaryNote 说明原因。
+3. category 必须从以下预设分类中选择最贴切的一个：
+   - 支出：餐饮、交通、购物、居住、日用、娱乐、医疗、人情、学习、其他支出
+   - 收入：工资、奖金、理财收益、退款、兼职、其他收入
+   - 转账：转账 或 还款
+4. amount 必须是正数，最多保留两位小数。
+5. date 格式为 YYYY-MM-DD；若截图只有月日（如 11-24），按当前年份补全；若无日期则填当前日期参考值。
+6. accountHint 填写截图中显示的支付方式或收款账户（如“招商银行储蓄卡(1234)”“零钱”“花呗”“信用卡”），无法判断则填空字符串。
+7. 若截图中看不到任何有效金额或交易记录，items 返回空数组，并在 summaryNote 说明原因。
 
 输出 JSON 格式：
 {
@@ -254,6 +258,7 @@ ${accountLines}
   "items": [
     {
       "type": "expense",
+      "category": "餐饮",
       "amount": 38.5,
       "title": "商户或交易摘要（16字以内）",
       "date": "2026-11-24",
@@ -324,6 +329,7 @@ function normalizeVisionItems(parsed, fallbackDate) {
     const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : fallbackDate;
     items.push({
       type,
+      category: String(raw.category || raw.tag || '').trim().slice(0, 24),
       amount,
       title,
       date,

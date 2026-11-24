@@ -106,14 +106,44 @@
   }
 
   function getInvestments() {
-    return window.mono.investments || {
-      accountId: null,
-      holdings: [],
-      holdingsTimeline: [],
-      lastSettledDate: null,
-      lastSyncAt: null,
-      settlements: []
+    const raw = window.mono.investments || {};
+    const cash = Number(raw.cashBalance);
+    return {
+      accountId: raw.accountId || null,
+      cashBalance: Number.isFinite(cash) && cash >= 0 ? Math.round(cash * 100) / 100 : 0,
+      holdings: Array.isArray(raw.holdings) ? raw.holdings : [],
+      holdingsTimeline: Array.isArray(raw.holdingsTimeline) ? raw.holdingsTimeline : [],
+      lastSettledDate: raw.lastSettledDate || null,
+      settledQuoteDates: raw.settledQuoteDates && typeof raw.settledQuoteDates === 'object' ? raw.settledQuoteDates : {},
+      lastSyncAt: raw.lastSyncAt || null,
+      settlements: Array.isArray(raw.settlements) ? raw.settlements : []
     };
+  }
+
+  function buildSettledQuoteDates(holdings) {
+    const map = {};
+    for (const h of holdings || []) {
+      if (h?.market && h?.code && h?.quoteDate && /^\d{4}-\d{2}-\d{2}$/.test(h.quoteDate)) {
+        map[h.market + h.code] = h.quoteDate;
+      }
+    }
+    return map;
+  }
+
+  function hasPendingFundQuotes(holdings, targetDate) {
+    if (!targetDate) return false;
+    return (holdings || []).some(h => h.market === 'jj' && (!h.quoteDate || h.quoteDate < targetDate));
+  }
+
+  function hasNewerSettledQuotes(holdings, prevSettledDates, latestDate) {
+    const prev = prevSettledDates && typeof prevSettledDates === 'object' ? prevSettledDates : {};
+    return (holdings || []).some(h => {
+      const sym = h.market + h.code;
+      const qd = h.quoteDate || '';
+      if (!qd || !/^\d{4}-\d{2}-\d{2}$/.test(qd) || qd > latestDate) return false;
+      const prevDate = prev[sym] || '';
+      return qd > prevDate;
+    });
   }
 
   function upsertTimeline(timeline, date, holdings) {
@@ -128,7 +158,7 @@
     return filtered.sort((a, b) => a.date.localeCompare(b.date)).slice(-90);
   }
 
-  function computeSummary(holdings) {
+  function computeSummary(holdings, cashBalance = 0) {
     let marketValue = 0;
     let prevValue = 0;
     let totalCost = 0;
@@ -151,11 +181,15 @@
 
     marketValue = Math.round(marketValue * 100) / 100;
     prevValue = Math.round(prevValue * 100) / 100;
+    const cash = Number.isFinite(Number(cashBalance)) && Number(cashBalance) > 0
+      ? Math.round(Number(cashBalance) * 100) / 100
+      : 0;
+    const accountTotal = Math.round((marketValue + cash) * 100) / 100;
     const dayPnl = Math.round((marketValue - prevValue) * 100) / 100;
     const dayPnlPct = prevValue > 0 ? Math.round((dayPnl / prevValue) * 10000) / 100 : 0;
     const totalPnl = hasCost ? Math.round((costValue - totalCost) * 100) / 100 : null;
     const totalPnlPct = hasCost && totalCost > 0 ? Math.round((totalPnl / totalCost) * 10000) / 100 : null;
-    return { marketValue, prevValue, dayPnl, dayPnlPct, hasCost, totalCost, totalPnl, totalPnlPct };
+    return { marketValue, cashBalance: cash, accountTotal, prevValue, dayPnl, dayPnlPct, hasCost, totalCost, totalPnl, totalPnlPct };
   }
 
   function buildHistoricalSnapshot(date, linkedAccountId, marketValue, existingSnapshots, currentAccounts) {
@@ -319,8 +353,9 @@
       });
 
       if (date < latestQuoteDate && inv.accountId) {
+        const cash = Number(inv.cashBalance) > 0 ? Math.round(Number(inv.cashBalance) * 100) / 100 : 0;
         backfilledSnapshots.push(
-          buildHistoricalSnapshot(date, inv.accountId, mv, [...window.mono.snapshots, ...backfilledSnapshots], window.mono.accounts)
+          buildHistoricalSnapshot(date, inv.accountId, Math.round((mv + cash) * 100) / 100, [...window.mono.snapshots, ...backfilledSnapshots], window.mono.accounts)
         );
       }
     }
@@ -381,10 +416,10 @@
       const bjNow = window.MonoServices.beijingNow();
       let backfilledSnapshots = [];
       let settledCount = 0;
+      let reSettledFund = false;
 
-      if (latestQuoteDate &&
-          window.MonoServices.isDateSettledNow(latestQuoteDate, bjNow) &&
-          nextInv.lastSettledDate !== latestQuoteDate) {
+      const settledNow = Boolean(latestQuoteDate && window.MonoServices.isDateSettledNow(latestQuoteDate, bjNow));
+      if (settledNow && nextInv.lastSettledDate !== latestQuoteDate) {
         const { newSettlements, backfilledSnapshots: snaps } = await computeMissedSettlements(nextInv, quoteMap, latestQuoteDate);
         backfilledSnapshots = snaps;
         if (newSettlements.length) {
@@ -394,27 +429,50 @@
             .sort((a, b) => b.date.localeCompare(a.date))
             .slice(0, 60);
           nextInv.lastSettledDate = latestQuoteDate;
+          nextInv.settledQuoteDates = buildSettledQuoteDates(updatedHoldings);
           settledCount = newSettlements.length;
         }
+      } else if (settledNow && nextInv.lastSettledDate === latestQuoteDate &&
+          hasNewerSettledQuotes(updatedHoldings, nextInv.settledQuoteDates, latestQuoteDate)) {
+        // Incremental same-day re-settlement when mutual funds (jj) publish official evening NAVs after 15:05 A-share close.
+        const updatedSummary = computeSummary(updatedHoldings, nextInv.cashBalance);
+        const existingMap = new Map((nextInv.settlements || []).map(s => [s.date, s]));
+        existingMap.set(latestQuoteDate, {
+          date: latestQuoteDate,
+          marketValue: updatedSummary.marketValue,
+          dayPnl: updatedSummary.dayPnl,
+          dayPnlPct: updatedSummary.dayPnlPct,
+          settledAt: nowIso,
+          backfilled: false
+        });
+        nextInv.settlements = Array.from(existingMap.values())
+          .sort((a, b) => b.date.localeCompare(a.date))
+          .slice(0, 60);
+        nextInv.settledQuoteDates = buildSettledQuoteDates(updatedHoldings);
+        reSettledFund = true;
       }
 
-      const summary = computeSummary(updatedHoldings);
+      const summary = computeSummary(updatedHoldings, nextInv.cashBalance);
       lastAutoSyncMs = Date.now();
-      syncNotice = settledCount > 1
-        ? `已完成 ${latestQuoteDate} 收盘结算，并自动补齐 ${settledCount - 1} 个交易日快照`
-        : settledCount === 1
-          ? `已完成 ${latestQuoteDate} 每日自动结算`
-          : manual ? '实时行情已更新并同步至净资产' : '';
+      syncNotice = reSettledFund
+        ? `已按最新基金净值更新 ${latestQuoteDate} 结算记录`
+        : settledCount > 1
+          ? `已完成 ${latestQuoteDate} 收盘结算，并自动补齐 ${settledCount - 1} 个交易日快照`
+          : settledCount === 1
+            ? (hasPendingFundQuotes(updatedHoldings, latestQuoteDate)
+              ? `已完成 ${latestQuoteDate} A 股收盘结算，晚间基金净值公布后将自动补算`
+              : `已完成 ${latestQuoteDate} 每日自动结算`)
+            : manual ? '实时行情已更新并同步至净资产' : '';
 
       window.mono.syncInvestmentState({
         investments: nextInv,
-        syncedBalance: summary.marketValue,
+        syncedBalance: summary.accountTotal,
         createAccountIfMissing: true,
         backfilledSnapshots,
         snapshotDate: window.mono.personal ? (latestQuoteDate || bjNow.date) : undefined
       });
       scheduleLivePolling();
-      return { ok: true, settledCount };
+      return { ok: true, settledCount, reSettledFund };
     } catch (err) {
       syncError = err?.message || '行情刷新失败，请稍后重试。';
       syncNotice = '';
@@ -434,7 +492,10 @@
     liveTimer = setInterval(() => {
       if (document.visibilityState !== 'visible') return;
       const bj = window.MonoServices.beijingNow();
-      if (bj.phase === 'trading' || (bj.afterSettlementTime && getInvestments().lastSettledDate !== bj.date)) {
+      const latestInv = getInvestments();
+      const waitingEveningFunds = !bj.isWeekend && bj.minutes >= 19 * 60 + 30 && bj.minutes <= 23 * 60 + 30 &&
+        hasPendingFundQuotes(latestInv.holdings, bj.date) && (Date.now() - lastAutoSyncMs >= 300000);
+      if (bj.phase === 'trading' || (bj.afterSettlementTime && latestInv.lastSettledDate !== bj.date) || waitingEveningFunds) {
         syncQuotes({ manual: false });
       }
     }, 60000);
@@ -474,6 +535,8 @@
     codeWrap.append(codeInput);
 
     const quotePill = el('div', 'inv-lookup-pill');
+    const mergeHint = el('p', 'inv-merge-hint');
+    mergeHint.hidden = true;
     const candidateBar = el('div', 'inv-candidates');
     candidateBar.hidden = true;
     let lookupCandidates = [];
@@ -521,26 +584,46 @@
     const feedback = el('p', 'mp-feedback');
     feedback.setAttribute('role', 'alert');
 
-    fields.append(codeWrap, quotePill, candidateBar, sharesWrap, costWrap, estPreview);
+    fields.append(codeWrap, quotePill, mergeHint, candidateBar, sharesWrap, costWrap, estPreview);
 
     const footer = el('div', 'mp-actions');
     if (existing) {
       const delBtn = el('button', 'mp-danger', '删除持仓');
       delBtn.type = 'button';
       delBtn.addEventListener('click', () => {
-        const nextHoldings = inv.holdings.filter(h => String(h.id) !== String(existing.id));
-        const bjToday = window.MonoServices.beijingNow().date;
-        const nextInv = {
-          ...inv,
-          holdings: nextHoldings,
-          holdingsTimeline: upsertTimeline(inv.holdingsTimeline, bjToday, nextHoldings)
-        };
-        const summary = computeSummary(nextHoldings);
-        closeSheet(dialog);
-        window.mono.syncInvestmentState({
-          investments: nextInv,
-          syncedBalance: summary.marketValue
+        title.textContent = '删除持仓';
+        form.hidden = true;
+        const confirm = el('div', 'mp-confirm');
+        confirm.append(el('p', '', `确认删除「${existing.name || existing.code}」？删除后持仓市值将自动从证券账户扣除（可用现金保留）。`));
+        const choices = el('div', 'mp-actions');
+        const back = el('button', 'mp-secondary', '返回');
+        back.type = 'button';
+        back.addEventListener('click', () => {
+          confirm.remove();
+          form.hidden = false;
+          title.textContent = '编辑持仓';
         });
+        const confirmDel = el('button', 'mp-destructive', '确认删除');
+        confirmDel.type = 'button';
+        confirmDel.addEventListener('click', () => {
+          const nextHoldings = inv.holdings.filter(h => String(h.id) !== String(existing.id));
+          const bjToday = window.MonoServices.beijingNow().date;
+          const nextInv = {
+            ...inv,
+            holdings: nextHoldings,
+            holdingsTimeline: upsertTimeline(inv.holdingsTimeline, bjToday, nextHoldings)
+          };
+          const summary = computeSummary(nextHoldings, nextInv.cashBalance);
+          closeSheet(dialog);
+          window.mono.syncInvestmentState({
+            investments: nextInv,
+            syncedBalance: summary.accountTotal
+          });
+        });
+        choices.append(back, confirmDel);
+        confirm.append(choices);
+        dialog.append(confirm);
+        back.focus();
       });
       footer.append(delBtn);
     }
@@ -558,6 +641,42 @@
     let lookupSeq = 0;
     let lookupTimer = null;
 
+    function computeWeightedCost(oldShares, oldCost, addShares, addCost) {
+      if (addCost == null || addCost <= 0) return oldCost ?? null;
+      if (Number.isFinite(Number(oldCost)) && Number(oldCost) > 0 && oldShares > 0) {
+        return Math.round(((oldShares * Number(oldCost) + addShares * addCost) / (oldShares + addShares)) * 10000) / 10000;
+      }
+      return Math.round(addCost * 10000) / 10000;
+    }
+
+    function refreshMergeHint() {
+      if (existing || !lookedUp) {
+        mergeHint.hidden = true;
+        return;
+      }
+      const dup = inv.holdings.find(h => h.market === lookedUp.market && h.code === lookedUp.code);
+      if (!dup) {
+        mergeHint.hidden = true;
+        return;
+      }
+      const unit = dup.market === 'jj' ? '份' : '股';
+      const addShares = Number(sharesInput.value);
+      const rawCost = costInput.value.trim();
+      const addCost = rawCost !== '' && Number.isFinite(Number(rawCost)) && Number(rawCost) > 0 ? Number(rawCost) : null;
+      const oldCostText = dup.costPrice != null ? `，原成本 ¥${formatPrice(dup.costPrice, dup.market)}` : '';
+      let previewText = `已持有 ${formatShares(dup.shares)} ${unit}${oldCostText}；本次加仓将自动合并`;
+      if (Number.isFinite(addShares) && addShares > 0) {
+        const mergedShares = Math.round((dup.shares + addShares) * 10000) / 10000;
+        const mergedCost = computeWeightedCost(dup.shares, dup.costPrice, addShares, addCost);
+        previewText += `为 ${formatShares(mergedShares)} ${unit}`;
+        if (mergedCost != null) previewText += `，加权成本 ¥${formatPrice(mergedCost, dup.market)}`;
+      } else {
+        previewText += '并按加权平均更新成本价';
+      }
+      mergeHint.textContent = previewText;
+      mergeHint.hidden = false;
+    }
+
     function refreshEstimate() {
       const shares = Number(sharesInput.value);
       const price = Number(lookedUp?.price || 0);
@@ -566,6 +685,7 @@
       } else {
         estValue.textContent = '—';
       }
+      refreshMergeHint();
     }
 
     function syncFieldLabels() {
@@ -667,6 +787,11 @@
       refreshEstimate();
     });
 
+    costInput.addEventListener('input', () => {
+      feedback.textContent = '';
+      refreshMergeHint();
+    });
+
     form.addEventListener('submit', async event => {
       event.preventDefault();
       feedback.textContent = '';
@@ -713,12 +838,13 @@
       } else {
         const dup = inv.holdings.find(h => h.market === lookedUp.market && h.code === lookedUp.code);
         if (dup) {
-          // Merge or update existing holding cleanly
+          // Merge duplicate holding and recalculate weighted-average cost price
+          const mergedCost = computeWeightedCost(dup.shares, dup.costPrice, shares, costPrice);
           nextHoldings = inv.holdings.map(h => h === dup ? {
             ...h,
             name: lookedUp.name,
             shares: Math.round((h.shares + shares) * 10000) / 10000,
-            costPrice: costPrice != null ? costPrice : h.costPrice,
+            costPrice: mergedCost,
             lastPrice: lookedUp.price,
             prevClose: lookedUp.prevClose,
             change: lookedUp.change,
@@ -755,11 +881,11 @@
         holdingsTimeline: upsertTimeline(inv.holdingsTimeline, bjToday, nextHoldings),
         lastSyncAt: nowIso
       };
-      const summary = computeSummary(nextHoldings);
+      const summary = computeSummary(nextHoldings, nextInv.cashBalance);
       closeSheet(dialog);
       window.mono.syncInvestmentState({
         investments: nextInv,
-        syncedBalance: summary.marketValue,
+        syncedBalance: summary.accountTotal,
         createAccountIfMissing: true
       });
       scheduleLivePolling();
@@ -772,13 +898,113 @@
     }
   }
 
+  function editCashBalance() {
+    if (document.querySelector('dialog[open]')) return;
+    const inv = getInvestments();
+    const summary = computeSummary(inv.holdings, inv.cashBalance);
+
+    const dialog = el('dialog', 'mp-dialog');
+    dialog.setAttribute('aria-labelledby', 'mp-cash-title');
+
+    const head = el('div', 'mp-dialog-head');
+    const title = el('h2', '', '证券可用现金');
+    title.id = 'mp-cash-title';
+    const close = el('button', 'mp-close');
+    close.type = 'button';
+    close.setAttribute('aria-label', '关闭');
+    close.append(icon('close'));
+    close.addEventListener('click', () => closeSheet(dialog));
+    head.append(title, close);
+
+    const intro = el('p', 'mp-batch-intro', '记录证券账户中未买股票的闲置现金，同步投资账户余额时会自动加上持仓市值，避免行情刷新冲掉现金。');
+    const form = el('form', 'mp-form');
+    const fields = el('div', 'mp-fields');
+
+    const cashWrap = el('label', 'mp-field');
+    cashWrap.append(el('span', '', '可用现金（元）'));
+    const cashInput = el('input');
+    cashInput.type = 'text';
+    cashInput.inputMode = 'decimal';
+    cashInput.autocomplete = 'off';
+    cashInput.placeholder = '0.00';
+    cashInput.value = inv.cashBalance > 0 ? String(inv.cashBalance) : '';
+    cashWrap.append(cashInput);
+
+    const preview = el('div', 'mp-batch-preview');
+    const totalOut = el('output', 'mp-batch-total', formatMoney(summary.accountTotal));
+    preview.append(el('span', '', '同步至账户总额（市值 + 现金）'), totalOut);
+
+    const feedback = el('p', 'mp-feedback');
+    feedback.setAttribute('role', 'alert');
+
+    fields.append(cashWrap, preview);
+
+    const cancelBtn = el('button', 'mp-secondary', '取消');
+    cancelBtn.type = 'button';
+    cancelBtn.addEventListener('click', () => closeSheet(dialog));
+    const saveBtn = el('button', 'mp-primary', '保存现金');
+    saveBtn.type = 'submit';
+    const footer = el('div', 'mp-actions');
+    footer.append(cancelBtn, saveBtn);
+
+    form.append(fields, feedback, footer);
+    dialog.append(head, intro, form);
+
+    function parseCash() {
+      const raw = cashInput.value.normalize('NFKC').trim().replaceAll(',', '');
+      if (!raw) return { ok: true, value: 0 };
+      if (!/^\d+(?:\.\d{0,2})?$/.test(raw)) return { ok: false, message: '请输入 0 至 99,999,999,999.99 元的有效金额，最多两位小数。' };
+      const num = Number(raw);
+      if (!Number.isFinite(num) || num < 0 || num > 99999999999.99) {
+        return { ok: false, message: '金额超出可保存范围。' };
+      }
+      return { ok: true, value: Math.round(num * 100) / 100 };
+    }
+
+    cashInput.addEventListener('input', () => {
+      const res = parseCash();
+      feedback.textContent = res.ok ? '' : res.message;
+      saveBtn.disabled = !res.ok;
+      totalOut.textContent = res.ok ? formatMoney(Math.round((summary.marketValue + res.value) * 100) / 100) : '—';
+    });
+
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      const res = parseCash();
+      if (!res.ok) {
+        feedback.textContent = res.message;
+        return;
+      }
+      const nextInv = { ...inv, cashBalance: res.value };
+      const nextSummary = computeSummary(nextInv.holdings, nextInv.cashBalance);
+      syncNotice = '已更新证券可用现金并同步至账户余额';
+      syncError = '';
+      closeSheet(dialog);
+      window.mono.syncInvestmentState({
+        investments: nextInv,
+        syncedBalance: nextSummary.accountTotal,
+        createAccountIfMissing: nextSummary.accountTotal > 0
+      });
+    });
+
+    openSheet(dialog);
+    if (!window.matchMedia('(max-width: 700px), (pointer: coarse)').matches) {
+      cashInput.focus();
+    }
+  }
+
   function getMarketBadge(inv) {
     const bj = window.MonoServices.beijingNow();
     if (syncing) return { text: '同步行情中…', cls: '' };
     if (!inv.holdings.length) return { text: '未添加持仓', cls: '' };
     if (bj.phase === 'trading') return { text: '盘中实时联动', cls: 'is-live' };
     if (bj.phase === 'noon') return { text: '午间休市', cls: '' };
-    if (inv.lastSettledDate === bj.date) return { text: '今日已自动结算', cls: 'is-settled' };
+    if (inv.lastSettledDate === bj.date) {
+      if (hasPendingFundQuotes(inv.holdings, bj.date)) {
+        return { text: 'A股已结算 · 待基金净值', cls: 'is-settled' };
+      }
+      return { text: '今日已自动结算', cls: 'is-settled' };
+    }
     if (bj.isWeekend) return { text: inv.lastSettledDate ? `已结算至 ${inv.lastSettledDate}` : '周末休市', cls: 'is-settled' };
     if (bj.phase === 'pre') return { text: '盘前 · 开盘自动更新', cls: '' };
     return { text: inv.lastSettledDate ? `已结算至 ${inv.lastSettledDate}` : '待收盘自动结算', cls: '' };
@@ -789,7 +1015,7 @@
     if (!root) return;
     const inv = getInvestments();
     const holdings = inv.holdings || [];
-    const summary = computeSummary(holdings);
+    const summary = computeSummary(holdings, inv.cashBalance);
 
     const wrap = el('div', 'mp-page inv-page');
 
@@ -826,6 +1052,9 @@
     const mvNode = el('div', 'mp-value inv-val', formatMoney(summary.marketValue));
     mvNode.dataset.amountKey = 'inv-mv';
     mvBlock.append(mvNode);
+    if (summary.cashBalance > 0) {
+      mvBlock.append(el('div', 'mp-meta inv-cash-sub', `含可用现金 ${formatMoney(summary.cashBalance)} · 账户合计 ${formatMoney(summary.accountTotal)}`));
+    }
 
     const dayBlock = el('div', 'mp-metric');
     dayBlock.append(el('div', 'mp-meta', '今日盈亏'));
@@ -861,12 +1090,12 @@
       wrap.append(banner);
     }
 
-    // Linked account sync strip
+    // Linked account & cash sync strip
     const investAccounts = window.mono.accounts.filter(a => a.type === '投资资产');
-    if (holdings.length) {
+    if (holdings.length || summary.cashBalance > 0) {
       const strip = el('div', 'inv-link-strip');
       const left = el('div', 'inv-link-left');
-      left.append(icon('link'), el('span', '', '市值自动同步至'));
+      left.append(icon('link'), el('span', '', '自动同步至'));
       const select = el('select', 'mp-filter inv-link-select');
       select.setAttribute('aria-label', '选择自动同步的投资账户');
       if (!investAccounts.length) {
@@ -878,10 +1107,20 @@
         }
       }
       select.addEventListener('change', () => {
-        const nextInv = { ...inv, accountId: select.value || null };
+        const targetId = select.value || null;
+        const targetAcc = investAccounts.find(a => String(a.id) === String(targetId));
+        let nextCash = inv.cashBalance;
+        // Preserve existing idle cash when switching to an investment account whose balance exceeds holdings market value
+        if (targetAcc && nextCash === 0 && targetAcc.balance > summary.marketValue) {
+          nextCash = Math.round((targetAcc.balance - summary.marketValue) * 100) / 100;
+          syncNotice = `已自动保留「${targetAcc.name}」原有闲置现金 ${formatMoney(nextCash)}，避免被市值覆写`;
+          syncError = '';
+        }
+        const nextInv = { ...inv, accountId: targetId, cashBalance: nextCash };
+        const nextSummary = computeSummary(holdings, nextCash);
         window.mono.syncInvestmentState({
           investments: nextInv,
-          syncedBalance: summary.marketValue
+          syncedBalance: nextSummary.accountTotal
         });
       });
 
@@ -892,7 +1131,24 @@
       mobileRefresh.addEventListener('click', () => syncQuotes({ manual: true }));
 
       strip.append(left, select, mobileRefresh);
-      wrap.append(strip);
+
+      const cashRow = el('button', 'inv-cash-row');
+      cashRow.type = 'button';
+      const cashLeft = el('div', 'inv-cash-left');
+      cashLeft.append(
+        el('span', 'inv-cash-title', '证券可用现金'),
+        el('small', 'mp-meta', '与持仓市值相加同步至账户，不被行情覆盖')
+      );
+      const cashRight = el('div', 'inv-cash-right');
+      const cashVal = el('strong', 'inv-val', formatMoney(summary.cashBalance));
+      cashVal.dataset.amountKey = 'inv-cash';
+      cashRight.append(cashVal, el('span', 'inv-cash-action', '修改'));
+      cashRow.append(cashLeft, cashRight);
+      cashRow.addEventListener('click', editCashBalance);
+
+      const syncGroup = el('div', 'inv-sync-group');
+      syncGroup.append(strip, cashRow);
+      wrap.append(syncGroup);
     }
 
     // Holdings list box

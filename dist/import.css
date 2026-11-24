@@ -260,7 +260,7 @@
 
 .mp-import-item-bottom {
   display: grid;
-  grid-template-columns: minmax(86px, .95fr) minmax(0, 1.25fr) minmax(112px, 1fr);
+  grid-template-columns: minmax(82px, .9fr) minmax(88px, .9fr) minmax(0, 1.15fr) minmax(112px, 1fr);
   gap: 6px;
 }
 
@@ -301,11 +301,229 @@
   color: #aa3733;
 }
 
-/* Transaction Ledger Panel inside #accounts */
+/* Transaction Ledger & Monthly Category Review inside #accounts */
+.mp-tx-head {
+  flex-wrap: wrap;
+  gap: 10px 12px;
+}
+
 .mp-tx-head-title {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.mp-tx-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mp-month-nav {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--soft);
+  padding: 2px;
+}
+
+.mp-month-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  color: var(--ink);
+}
+
+.mp-month-btn:disabled {
+  opacity: .35;
+  cursor: default;
+}
+
+.mp-month-btn:not(:disabled):hover {
+  background: var(--hover);
+}
+
+.mp-month-btn .mp-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.mp-month-label {
+  min-height: 38px;
+  padding: 0 8px;
+  font-size: .875rem;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.mp-tx-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-bottom: 1px solid var(--line);
+  background: var(--subtle);
+}
+
+.mp-tx-stat {
+  display: grid;
+  gap: 4px;
+  padding: 13px clamp(14px, 2.5vw, 24px);
+  min-width: 0;
+}
+
+.mp-tx-stat + .mp-tx-stat {
+  border-left: 1px solid var(--line);
+}
+
+.mp-tx-stat-val {
+  font-size: clamp(.94rem, 2.2vw, 1.15rem);
+  font-weight: 560;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+  overflow-wrap: anywhere;
+}
+
+.mp-tx-stat-val.is-expense { color: #ff998f; }
+.mp-tx-stat-val.is-income { color: #8ed5a6; }
+:root[data-theme="light"] .mp-tx-stat-val.is-expense { color: #aa3733; }
+:root[data-theme="light"] .mp-tx-stat-val.is-income { color: #276e42; }
+
+.mp-cat-breakdown {
+  padding: 14px clamp(16px, 3vw, 28px) 16px;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 11px;
+}
+
+.mp-cat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mp-cat-heading {
+  font-size: .84rem;
+  font-weight: 500;
+  color: var(--secondary-ink);
+}
+
+.mp-cat-mode-switch {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+}
+
+.mp-cat-mode-btn {
+  min-height: 32px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: .78rem;
+  color: var(--muted);
+}
+
+.mp-cat-mode-btn.is-active {
+  background: var(--segment-active);
+  color: var(--ink);
+  font-weight: 550;
+  box-shadow: var(--shadow-selected);
+}
+
+.mp-cat-bars {
+  display: grid;
+  gap: 6px;
+}
+
+.mp-cat-row {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  min-height: 44px;
+  padding: 7px 10px;
+  border-radius: 12px;
+  text-align: left;
+  color: var(--ink);
+  transition: background-color 140ms ease;
+}
+
+.mp-cat-row:hover {
+  background: var(--soft);
+}
+
+.mp-cat-row.is-selected {
+  background: var(--selected);
+}
+
+.mp-cat-row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mp-cat-row-left,
+.mp-cat-row-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.mp-cat-row-left strong {
+  font-size: .875rem;
+  font-weight: 500;
+}
+
+.mp-cat-row-right {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.mp-cat-row-right strong {
+  font-size: .875rem;
+  font-weight: 520;
+}
+
+.mp-cat-track {
+  height: 5px;
+  border-radius: 999px;
+  background: var(--soft);
+  overflow: hidden;
+}
+
+.mp-cat-fill {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 260ms cubic-bezier(.22, 1, .36, 1);
+}
+
+.mp-cat-empty {
+  padding-block: 4px;
+}
+
+.mp-tx-active-filter {
+  padding: 10px clamp(16px, 3vw, 28px);
+  border-bottom: 1px solid var(--line);
+  background: var(--subtle);
+}
+
+.mp-active-cat-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: .8rem;
+  font-weight: 500;
 }
 
 .mp-tx-count {
@@ -337,9 +555,19 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 60px;
+  min-height: 62px;
   padding: 10px clamp(18px, 3vw, 30px);
   border-top: 1px solid var(--line);
+}
+
+.mp-tx-row-btn {
+  width: 100%;
+  text-align: left;
+  color: var(--ink);
+}
+
+.mp-tx-row-btn:hover {
+  background: var(--soft);
 }
 
 .mp-tx-info {
@@ -361,6 +589,18 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.mp-tx-cat-tag {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: .72rem;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--secondary-ink);
 }
 
 .mp-tx-source {
@@ -393,14 +633,15 @@
 
 .mp-tx-amount.is-expense { color: #ff998f; }
 .mp-tx-amount.is-income { color: #8ed5a6; }
+.mp-tx-amount.is-transfer { color: var(--secondary-ink); }
 :root[data-theme="light"] .mp-tx-amount.is-expense { color: #aa3733; }
 :root[data-theme="light"] .mp-tx-amount.is-income { color: #276e42; }
 
 .mp-tx-delete {
   display: inline-grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 38px;
+  height: 38px;
   border-radius: 10px;
   color: var(--muted);
   flex: none;
@@ -427,8 +668,18 @@
   .mp-import-item-bottom {
     grid-template-columns: 1fr 1fr;
   }
-  .mp-import-date-input {
-    grid-column: 1 / -1;
+  .mp-tx-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .mp-tx-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .mp-tx-stat {
+    padding: 11px 10px;
+  }
+  .mp-cat-breakdown {
+    padding: 12px 14px 14px;
   }
   .mp-tx-date-group,
   .mp-tx-row {
