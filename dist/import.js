@@ -384,7 +384,7 @@
       try {
         const compressed = [];
         for (const file of files) {
-          const dataUrl = await window.MonoServices.compressImage(file, { maxEdge: 1280, quality: 0.82 });
+          const dataUrl = await window.MonoServices.compressImage(file, { maxEdge: 1536, quality: 0.85 });
           if (aborted) return;
           compressed.push(dataUrl);
           const img = el('img', 'mp-import-thumb');

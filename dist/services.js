@@ -399,16 +399,45 @@ ${accountLines}
 
   function parseJsonFromText(rawText) {
     const text = String(rawText || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    if (!text) {
+      throw new Error('模型返回内容为空（可能是思考过程耗尽了输出额度），已自动优化参数，请重试。');
+    }
     const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
     const candidate = fenced ? fenced[1].trim() : text;
     try {
       return JSON.parse(candidate);
     } catch {
-      const start = candidate.indexOf('{');
-      const end = candidate.lastIndexOf('}');
-      if (start >= 0 && end > start) return JSON.parse(candidate.slice(start, end + 1));
-      throw new Error('AI 返回内容无法解析为账单 JSON，请更换清晰截图重试。');
+      const objStart = candidate.indexOf('{');
+      const objEnd = candidate.lastIndexOf('}');
+      if (objStart >= 0 && objEnd > objStart) {
+        try { return JSON.parse(candidate.slice(objStart, objEnd + 1)); } catch {}
+      }
+      const arrStart = candidate.indexOf('[');
+      const arrEnd = candidate.lastIndexOf(']');
+      if (arrStart >= 0 && arrEnd > arrStart) {
+        try { return JSON.parse(candidate.slice(arrStart, arrEnd + 1)); } catch {}
+      }
+      const preview = text.replace(/\s+/g, ' ').slice(0, 90);
+      throw new Error(`AI 返回内容无法解析为账单 JSON（原始片段：${preview}…）`);
     }
+  }
+
+  function parseNumericAmount(raw) {
+    if (typeof raw === 'number') return Math.round(Math.abs(raw) * 100) / 100;
+    const cleaned = String(raw ?? '').replace(/[¥￥$,，\s元块RMB]/gi, '').trim();
+    const match = cleaned.match(/[+-]?\d+(?:\.\d+)?/);
+    if (!match) return NaN;
+    return Math.round(Math.abs(Number(match[0])) * 100) / 100;
+  }
+
+  function parseItemType(rawType, rawAmount, title = '') {
+    const t = String(rawType || '').trim().toLowerCase();
+    if (['income', 'in', '收入', '入账', '收款', '退款'].some(k => t.includes(k))) return 'income';
+    if (['transfer', '提现', '还款', '转账', '划转', '转入', '转出'].some(k => t.includes(k))) return 'transfer';
+    if (['expense', 'out', '支出', '消费', '付款'].some(k => t.includes(k))) return 'expense';
+    if (/提现|还款|零钱通|余额宝|朝朝宝|本人互转/.test(String(title))) return 'transfer';
+    if (String(rawAmount ?? '').trim().startsWith('+')) return 'income';
+    return 'expense';
   }
 
   function explainVisionError(status, rawMessage, modelName = '') {
@@ -443,29 +472,50 @@ ${accountLines}
   }
 
   function normalizeVisionResult(parsed, fallbackDate) {
-    const rawItems = Array.isArray(parsed?.items) ? parsed.items : [];
+    const rawItems = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsed?.items) ? parsed.items
+      : Array.isArray(parsed?.transactions) ? parsed.transactions
+      : Array.isArray(parsed?.records) ? parsed.records
+      : Array.isArray(parsed?.bills) ? parsed.bills
+      : Array.isArray(parsed?.data) ? parsed.data
+      : [];
     const items = [];
     for (const raw of rawItems) {
       if (!raw || typeof raw !== 'object') continue;
-      const amount = Math.round(Math.abs(Number(raw.amount)) * 100) / 100;
+      const amount = parseNumericAmount(raw.amount ?? raw.money ?? raw.value);
       if (!Number.isFinite(amount) || amount <= 0 || amount > 999999999.99) continue;
-      const rawType = String(raw.type || '').toLowerCase();
-      const type = rawType === 'income' ? 'income' : rawType === 'transfer' ? 'transfer' : 'expense';
-      const title = String(raw.title || raw.merchant || '未命名收支').trim().slice(0, 48);
-      const date = /^\d{4}-\d{2}-\d{2}$/.test(String(raw.date || '')) ? raw.date : fallbackDate;
+      const title = String(raw.title || raw.merchant || raw.name || raw.desc || '未命名收支').trim().slice(0, 48);
+      const type = parseItemType(raw.type || raw.direction || raw.category, raw.amount, title);
+      const rawDate = String(raw.date || '').trim().slice(0, 10);
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : fallbackDate;
       items.push({
         type,
         amount,
         title,
         date,
-        accountHint: String(raw.accountHint || '').trim().slice(0, 48),
-        note: String(raw.note || '').trim().slice(0, 64)
+        accountHint: String(raw.accountHint || raw.account || raw.paymentMethod || '').trim().slice(0, 48),
+        note: String(raw.note || raw.remark || '').trim().slice(0, 64)
       });
     }
     return {
-      summaryNote: String(parsed?.summaryNote || '').trim().slice(0, 120),
+      summaryNote: String(parsed?.summaryNote || parsed?.summary || '').trim().slice(0, 120),
       items
     };
+  }
+
+  function isDeepSeekTarget(baseUrl, model) {
+    return /deepseek/i.test(String(baseUrl || '')) || /deepseek/i.test(String(model || ''));
+  }
+
+  function extractCompletionText(payload) {
+    const msg = payload?.choices?.[0]?.message;
+    const raw = msg?.content;
+    let text = Array.isArray(raw) ? raw.map(p => p?.text || '').join('\n') : String(raw || '');
+    if (!text.trim() && msg?.reasoning_content) {
+      text = String(msg.reasoning_content);
+    }
+    return text;
   }
 
   async function recognizeReceipt(images, { accounts = [], today = beijingNow().date } = {}) {
@@ -505,6 +555,20 @@ ${accountLines}
     for (const dataUrl of images) {
       content.push({ type: 'image_url', image_url: { url: dataUrl } });
     }
+    const reqBody = {
+      model: cfg.aiModel,
+      max_tokens: 4096,
+      messages: [{ role: 'user', content }]
+    };
+    if (isDeepSeekTarget(cfg.aiBaseUrl, cfg.aiModel)) {
+      // DeepSeek V4 Flash enables thinking by default, which shares max_tokens and can leave content empty/truncated.
+      reqBody.thinking = { type: 'disabled' };
+      reqBody.response_format = { type: 'json_object' };
+      reqBody.temperature = 0.1;
+    } else {
+      reqBody.temperature = 0.1;
+    }
+
     let res;
     try {
       res = await fetchWithTimeout(`${cfg.aiBaseUrl}/chat/completions`, {
@@ -513,12 +577,7 @@ ${accountLines}
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${cfg.aiApiKey}`
         },
-        body: JSON.stringify({
-          model: cfg.aiModel,
-          temperature: 0.1,
-          max_tokens: 2048,
-          messages: [{ role: 'user', content }]
-        })
+        body: JSON.stringify(reqBody)
       }, 90000);
     } catch (err) {
       throw new Error(explainNetworkError(err, false));
@@ -528,8 +587,7 @@ ${accountLines}
       const msg = payload?.error?.message || payload?.message || '';
       throw new Error(explainVisionError(res.status, msg, cfg.aiModel));
     }
-    const rawText = payload?.choices?.[0]?.message?.content;
-    const text = Array.isArray(rawText) ? rawText.map(p => p?.text || '').join('\n') : String(rawText || '');
+    const text = extractCompletionText(payload);
     return normalizeVisionResult(parseJsonFromText(text), today);
   }
 
@@ -565,6 +623,20 @@ ${accountLines}
     if (!cfg.aiBaseUrl || !cfg.aiApiKey || !cfg.aiModel) {
       return { ok: false, message: '直连模式请填写完整的接口地址、API Key 和模型名称。' };
     }
+    const testBody = {
+      model: cfg.aiModel,
+      max_tokens: 32,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: 'OK' },
+          { type: 'image_url', image_url: { url: TEST_PIXEL_DATA_URL } }
+        ]
+      }]
+    };
+    if (isDeepSeekTarget(cfg.aiBaseUrl, cfg.aiModel)) {
+      testBody.thinking = { type: 'disabled' };
+    }
     try {
       const res = await fetchWithTimeout(`${cfg.aiBaseUrl}/chat/completions`, {
         method: 'POST',
@@ -572,17 +644,7 @@ ${accountLines}
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${cfg.aiApiKey}`
         },
-        body: JSON.stringify({
-          model: cfg.aiModel,
-          max_tokens: 16,
-          messages: [{
-            role: 'user',
-            content: [
-              { type: 'text', text: 'OK' },
-              { type: 'image_url', image_url: { url: TEST_PIXEL_DATA_URL } }
-            ]
-          }]
-        })
+        body: JSON.stringify(testBody)
       }, 20000);
       const payload = await res.json().catch(() => null);
       if (res.ok) {

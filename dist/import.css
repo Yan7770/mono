@@ -291,11 +291,13 @@
   color: #18804e;
 }
 
-.mp-settings-form .mp-feedback.is-error {
+.mp-settings-form .mp-feedback.is-error,
+.mp-import-dialog .mp-feedback:not(:empty) {
   color: #ff998f;
 }
 
-:root[data-theme="light"] .mp-settings-form .mp-feedback.is-error {
+:root[data-theme="light"] .mp-settings-form .mp-feedback.is-error,
+:root[data-theme="light"] .mp-import-dialog .mp-feedback:not(:empty) {
   color: #aa3733;
 }
 

@@ -266,52 +266,94 @@ ${accountLines}
 
 function parseJsonFromText(rawText) {
   const text = String(rawText || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  if (!text) throw new Error('模型返回内容为空，请重试。');
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const candidate = fenced ? fenced[1].trim() : text;
   try {
     return JSON.parse(candidate);
   } catch {
-    const start = candidate.indexOf('{');
-    const end = candidate.lastIndexOf('}');
-    if (start >= 0 && end > start) {
-      return JSON.parse(candidate.slice(start, end + 1));
+    const objStart = candidate.indexOf('{');
+    const objEnd = candidate.lastIndexOf('}');
+    if (objStart >= 0 && objEnd > objStart) {
+      try { return JSON.parse(candidate.slice(objStart, objEnd + 1)); } catch {}
     }
-    throw new Error('模型返回格式无法解析为 JSON');
+    const arrStart = candidate.indexOf('[');
+    const arrEnd = candidate.lastIndexOf(']');
+    if (arrStart >= 0 && arrEnd > arrStart) {
+      try { return JSON.parse(candidate.slice(arrStart, arrEnd + 1)); } catch {}
+    }
+    throw new Error('模型返回格式无法解析为 JSON：' + text.replace(/\s+/g, ' ').slice(0, 80));
   }
 }
 
+function parseNumericAmount(raw) {
+  if (typeof raw === 'number') return Math.round(Math.abs(raw) * 100) / 100;
+  const cleaned = String(raw ?? '').replace(/[¥￥$,，\s元块RMB]/gi, '').trim();
+  const match = cleaned.match(/[+-]?\d+(?:\.\d+)?/);
+  if (!match) return NaN;
+  return Math.round(Math.abs(Number(match[0])) * 100) / 100;
+}
+
+function parseItemType(rawType, rawAmount, title = '') {
+  const t = String(rawType || '').trim().toLowerCase();
+  if (['income', 'in', '收入', '入账', '收款', '退款'].some(k => t.includes(k))) return 'income';
+  if (['transfer', '提现', '还款', '转账', '划转', '转入', '转出'].some(k => t.includes(k))) return 'transfer';
+  if (['expense', 'out', '支出', '消费', '付款'].some(k => t.includes(k))) return 'expense';
+  if (/提现|还款|零钱通|余额宝|朝朝宝|本人互转/.test(String(title))) return 'transfer';
+  if (String(rawAmount ?? '').trim().startsWith('+')) return 'income';
+  return 'expense';
+}
+
 function normalizeVisionItems(parsed, fallbackDate) {
-  const rawItems = Array.isArray(parsed?.items) ? parsed.items : [];
+  const rawItems = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray(parsed?.items) ? parsed.items
+    : Array.isArray(parsed?.transactions) ? parsed.transactions
+    : Array.isArray(parsed?.records) ? parsed.records
+    : Array.isArray(parsed?.bills) ? parsed.bills
+    : Array.isArray(parsed?.data) ? parsed.data
+    : [];
   const items = [];
   for (const raw of rawItems) {
     if (!raw || typeof raw !== 'object') continue;
-    const amount = Math.round(Math.abs(Number(raw.amount)) * 100) / 100;
+    const amount = parseNumericAmount(raw.amount ?? raw.money ?? raw.value);
     if (!Number.isFinite(amount) || amount <= 0 || amount > 999999999.99) continue;
-    const rawType = String(raw.type || '').toLowerCase();
-    const type = rawType === 'income' ? 'income' : rawType === 'transfer' ? 'transfer' : 'expense';
-    const title = String(raw.title || raw.merchant || '未命名收支').trim().slice(0, 48);
-    const date = /^\d{4}-\d{2}-\d{2}$/.test(String(raw.date || '')) ? raw.date : fallbackDate;
+    const title = String(raw.title || raw.merchant || raw.name || raw.desc || '未命名收支').trim().slice(0, 48);
+    const type = parseItemType(raw.type || raw.direction || raw.category, raw.amount, title);
+    const rawDate = String(raw.date || '').trim().slice(0, 10);
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : fallbackDate;
     items.push({
       type,
       amount,
       title,
       date,
-      accountHint: String(raw.accountHint || '').trim().slice(0, 48),
-      note: String(raw.note || '').trim().slice(0, 64)
+      accountHint: String(raw.accountHint || raw.account || raw.paymentMethod || '').trim().slice(0, 48),
+      note: String(raw.note || raw.remark || '').trim().slice(0, 64)
     });
   }
   return {
-    summaryNote: String(parsed?.summaryNote || '').trim().slice(0, 120),
+    summaryNote: String(parsed?.summaryNote || parsed?.summary || '').trim().slice(0, 120),
     items
   };
 }
 
 async function callOpenAIVision(images, prompt, env) {
-  const base = (env.AI_API_BASE || DEFAULT_AI_BASE).replace(/\/+$/, '');
+  const base = (env.AI_API_BASE || DEFAULT_AI_BASE).replace(/\/(chat\/completions|models)\/?$/i, '').replace(/\/+$/, '');
   const model = (env.AI_MODEL || DEFAULT_AI_MODEL).trim();
   const content = [{ type: 'text', text: prompt }];
   for (const dataUrl of images) {
     content.push({ type: 'image_url', image_url: { url: dataUrl } });
+  }
+
+  const reqBody = {
+    model,
+    temperature: 0.1,
+    max_tokens: 4096,
+    messages: [{ role: 'user', content }]
+  };
+  if (/deepseek/i.test(base) || /deepseek/i.test(model)) {
+    reqBody.thinking = { type: 'disabled' };
+    reqBody.response_format = { type: 'json_object' };
   }
 
   const response = await fetch(`${base}/chat/completions`, {
@@ -320,12 +362,7 @@ async function callOpenAIVision(images, prompt, env) {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${env.AI_API_KEY}`
     },
-    body: JSON.stringify({
-      model,
-      temperature: 0.1,
-      max_tokens: 2048,
-      messages: [{ role: 'user', content }]
-    })
+    body: JSON.stringify(reqBody)
   });
 
   const payload = await response.json().catch(() => null);
@@ -333,11 +370,13 @@ async function callOpenAIVision(images, prompt, env) {
     const msg = payload?.error?.message || payload?.message || `AI 接口返回 ${response.status}`;
     throw new Error(msg);
   }
-  const text = payload?.choices?.[0]?.message?.content;
-  if (Array.isArray(text)) {
-    return text.map(part => part?.text || '').join('\n');
+  const msgObj = payload?.choices?.[0]?.message;
+  const raw = msgObj?.content;
+  let text = Array.isArray(raw) ? raw.map(part => part?.text || '').join('\n') : String(raw || '');
+  if (!text.trim() && msgObj?.reasoning_content) {
+    text = String(msgObj.reasoning_content);
   }
-  return String(text || '');
+  return text;
 }
 
 async function callAnthropicVision(images, prompt, env) {
